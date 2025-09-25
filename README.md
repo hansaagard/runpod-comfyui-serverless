@@ -22,19 +22,19 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
 
 1. **Repository klonen**
    ```bash
-   git clone https://github.com/tensorvisuals/runpod-comfyui-serverless.git
+   git clone https://github.com/EcomTree/runpod-comfyui-serverless.git
    cd runpod-comfyui-serverless
    ```
 
 2. **Docker Image bauen**
    ```bash
-   docker build -t runpod-comfyui-serverless -f Serverless.Dockerfile .
+   docker build -t ecomtree/comfyui-serverless -f Serverless.Dockerfile .
    ```
 
 3. **Image zu RunPod Registry pushen**
    ```bash
-   docker tag runpod-comfyui-serverless:latest your-registry/runpod-comfyui-serverless:latest
-   docker push your-registry/runpod-comfyui-serverless:latest
+   docker tag ecomtree/comfyui-serverless:latest ecomtree/comfyui-serverless:latest
+   docker push ecomtree/comfyui-serverless:latest
    ```
 
 ## 🔧 Konfiguration
