@@ -33,7 +33,6 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
 
 3. **Image zu RunPod Registry pushen**
    ```bash
-   docker tag ecomtree/comfyui-serverless:latest ecomtree/comfyui-serverless:latest
    docker push ecomtree/comfyui-serverless:latest
    ```
 
