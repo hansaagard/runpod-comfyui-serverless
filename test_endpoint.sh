@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# WARNUNG: Echte API-Schlüssel oder Endpoint-IDs nicht in die Versionsverwaltung committen!
-# Erstelle stattdessen eine Kopie dieser Datei (z.B. test_endpoint_local.sh) für lokale Tests.
+# WARNING: Do not commit real API keys or endpoint IDs to version control!
+# Instead, create a copy of this file (e.g. test_endpoint_local.sh) for local testing.
 
 # Configuration
 ENDPOINT_ID=""
