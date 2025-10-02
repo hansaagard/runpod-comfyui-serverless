@@ -6,7 +6,7 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
 
 - **Serverless GPU Computing**: Nutzt RunPod's Serverless Platform für skalierbare GPU-Berechnungen
 - **ComfyUI Integration**: Nahtlose Integration mit ComfyUI für AI-Bildgenerierung
-- **Network Volume Support**: Automatisches Speichern der generierten Bilder auf RunPod Network Volume
+- **Network Volume Support**: Automatisches Speichern generierter Bilder auf RunPod Network Volume
 - **Workflow Flexibilität**: Unterstützt sowohl vordefinierte als auch dynamische Workflows
 - **Error Handling**: Robuste Fehlerbehandlung und detailliertes Logging
 - **Test Suite**: Umfangreiches Test-Script für lokale und Remote-Tests
