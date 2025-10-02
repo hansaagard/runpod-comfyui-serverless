@@ -65,3 +65,7 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+
+# Test files with real credentials
+test_endpoint_*.sh
+!test_endpoint.sh

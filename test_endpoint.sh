@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# WARNUNG: Echte API-Schlüssel oder Endpoint-IDs nicht in die Versionsverwaltung committen!
+# Erstelle stattdessen eine Kopie dieser Datei (z.B. test_endpoint_local.sh) für lokale Tests.
+
 # Configuration
 ENDPOINT_ID=""
 API_KEY=""
