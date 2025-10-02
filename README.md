@@ -15,7 +15,7 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
 
 - RunPod Account mit API Key
 - RunPod Network Volume (für persistente Speicherung)
-- Docker (für Image Build)
+- Docker (für Image-Build)
 - Python 3.11+
 
 ## 🛠️ Installation
