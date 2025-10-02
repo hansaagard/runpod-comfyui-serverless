@@ -6,7 +6,7 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
 
 - **Serverless GPU Computing**: Nutzt RunPod's Serverless Platform für skalierbare GPU-Berechnungen
 - **ComfyUI Integration**: Nahtlose Integration mit ComfyUI für AI-Bildgenerierung
-- **AWS S3 Support**: Automatisches Hochladen der generierten Bilder zu AWS S3
+- **RunPod Network-Volume-Support**: Automatisches Speichern der generierten Bilder auf dem RunPod Network-Volume
 - **Workflow Flexibilität**: Unterstützt sowohl vordefinierte als auch dynamische Workflows
 - **Error Handling**: Robuste Fehlerbehandlung und detailliertes Logging
 - **Test Suite**: Umfangreiches Test-Script für lokale und Remote-Tests
@@ -14,9 +14,9 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
 ## 📋 Voraussetzungen
 
 - RunPod Account mit API Key
-- AWS Account mit S3 Bucket (optional)
-- Docker (für lokale Tests)
-- Python 3.8+
+- RunPod Network Volume (für persistente Speicherung)
+- Docker (für Image-Build)
+- Python 3.11+
 
 ## 🛠️ Installation
 
@@ -40,22 +40,16 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
 
 ### Umgebungsvariablen
 
-Der Handler benötigt folgende Umgebungsvariablen:
+Der Handler unterstützt folgende Umgebungsvariablen:
 
-- `RUNPOD_WEBHOOK_GET_WORK`: Webhook URL für Job-Abfrage
-- `RUNPOD_AI_API_KEY`: RunPod API Key
-- `COMFY_API_URL`: ComfyUI API Endpoint (default: http://127.0.0.1:8188)
-- `AWS_ACCESS_KEY_ID`: AWS Access Key (optional)
-- `AWS_SECRET_ACCESS_KEY`: AWS Secret Key (optional)
-- `AWS_ENDPOINT_URL`: Custom S3 Endpoint URL (optional)
-- `BUCKET_NAME`: S3 Bucket Name (optional)
+- `COMFY_PORT`: ComfyUI Port (default: 8188)
+- `COMFY_HOST`: ComfyUI Host (default: 127.0.0.1)
+- `RUNPOD_VOLUME_PATH`: Pfad zum Network Volume (default: /runpod-volume)
+- `RUNPOD_OUTPUT_DIR`: Alternatives Output-Verzeichnis (optional)
 
 ### Workflow Konfiguration
 
-Workflows können auf zwei Arten bereitgestellt werden:
-
-1. **Vordefinierte Workflows**: Platziere `.json` Workflow-Dateien im `/comfyui/workflows/` Verzeichnis
-2. **Dynamische Workflows**: Übergebe den Workflow direkt im Request
+Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das ComfyUI Workflow-Format.
 
 ## 📝 Verwendung
 
@@ -64,13 +58,26 @@ Workflows können auf zwei Arten bereitgestellt werden:
 ```json
 {
   "input": {
-    "workflow": "workflow_name",  // oder komplettes workflow JSON
-    "images": [
-      {
-        "name": "image1.png",
-        "image": "base64_encoded_image_data"
+    "workflow": {
+      // ComfyUI Workflow JSON
+      // Beispiel: SD 1.5 Text-to-Image
+      "3": {
+        "inputs": {
+          "seed": 42,
+          "steps": 20,
+          "cfg": 7.0,
+          "sampler_name": "euler",
+          "scheduler": "normal",
+          "denoise": 1.0,
+          "model": ["4", 0],
+          "positive": ["6", 0],
+          "negative": ["7", 0],
+          "latent_image": ["5", 0]
+        },
+        "class_type": "KSampler"
       }
-    ]
+      // ... weitere Nodes
+    }
   }
 }
 ```
@@ -79,74 +86,95 @@ Workflows können auf zwei Arten bereitgestellt werden:
 
 ```json
 {
-  "output": {
-    "message": "Workflow completed successfully",
-    "files": ["s3://bucket/path/to/output.png"]
+  "links": [
+    "/runpod-volume/job-id/output_image.png"
+  ],
+  "total_images": 1,
+  "job_id": "abc123",
+  "saved_paths": [
+    "/runpod-volume/job-id/output_image.png"
+  ],
+  "output_base": "/runpod-volume",
+  "comfy_result": {
+    // ComfyUI execution result
   }
 }
 ```
 
 ## 🧪 Testing
 
-Das Repository enthält ein umfangreiches Test-Script (`test_endpoint.sh`) für verschiedene Szenarien:
+Test-Skripte sind nicht im Repository enthalten. Erstelle dein eigenes Test-Skript:
 
 ```bash
-# Lokaler Test
-./test_endpoint.sh local
+#!/bin/bash
+# WARNUNG: Echte API-Schlüssel oder Endpoint-IDs nicht in die Versionsverwaltung committen!
+ENDPOINT_ID="your-endpoint-id"
+API_KEY="your-runpod-api-key"
+API_URL="https://api.runpod.ai/v2/${ENDPOINT_ID}/runsync"
 
-# RunPod Test
-./test_endpoint.sh runpod
-
-# Spezifische Test-Szenarien
-./test_endpoint.sh test workflow_test
-./test_endpoint.sh test image_upload_test
+curl -X POST "$API_URL" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "workflow": "workflow_data_here"
+    }
+  }'
 ```
-
-### Verfügbare Test-Szenarien
-
-- `basic_health`: Health Check
-- `workflow_test`: Test mit vordefiniertem Workflow
-- `workflow_json_test`: Test mit JSON Workflow
-- `image_upload_test`: Test mit Bild-Upload
-- `batch_test`: Batch-Verarbeitung Test
-- `error_test`: Error Handling Test
-- `performance_test`: Performance Benchmark
 
 ## 🏗️ Architektur
 
 ```
 ├── rp_handler.py          # Haupt-Handler für RunPod
 ├── Serverless.Dockerfile  # Docker Image Definition
-├── test_endpoint.sh       # Test Suite
+├── .gitignore            # Git ignore rules
 └── README.md             # Diese Datei
 ```
 
 ### Handler Komponenten
 
-- **RunPodHandler**: Hauptklasse für Job-Verarbeitung
-- **upload_to_s3**: S3 Upload Funktionalität
-- **test_handler**: Lokale Test-Funktion
-- **Error Handling**: Umfassende Fehlerbehandlung
+- **handler()**: Hauptfunktion für Job-Verarbeitung
+- **_start_comfy()**: ComfyUI Server Management
+- **_run_workflow()**: Workflow Execution über ComfyUI API
+- **_wait_for_completion()**: Monitoring der Workflow-Ausführung
+- **_save_to_network_volume()**: Speicherung auf RunPod Network Volume
+- **_ensure_volume_ready()**: Volume Mount Validation
 
 ## 🚀 Deployment
 
-1. **RunPod Serverless Endpoint erstellen**
-   - Gehe zu RunPod Dashboard
-   - Erstelle neuen Serverless Endpoint
-   - Wähle dein Docker Image
-   - Konfiguriere Umgebungsvariablen
-
-2. **Endpoint testen**
+1. **Docker Image bauen und pushen**
    ```bash
-   ./test_endpoint.sh runpod basic_health
+   docker build -t ecomtree/comfyui-serverless:latest -f Serverless.Dockerfile .
+   docker push ecomtree/comfyui-serverless:latest
    ```
+
+2. **RunPod Serverless Endpoint erstellen**
+   - Gehe zu [RunPod Dashboard](https://runpod.io/console/serverless)
+   - Erstelle neuen Serverless Endpoint
+   - Docker Image: `ecomtree/comfyui-serverless:latest`
+   - Container Disk: mindestens 15GB
+   - GPU: mindestens RTX 3090 oder besser
+   - **Wichtig**: Network Volume mit ausreichend Speicher verbinden
+
+3. **Endpoint konfigurieren**
+   - Setze Umgebungsvariablen falls nötig
+   - Konfiguriere Max Workers und Idle Timeout
+   - Notiere Endpoint ID und API Key
 
 ## 📊 Performance
 
-- **Cold Start**: ~10-15 Sekunden
-- **Warm Start**: ~2-3 Sekunden
-- **Workflow Execution**: Abhängig von Komplexität (5-60 Sekunden)
-- **S3 Upload**: ~1-2 Sekunden pro Bild
+- **Cold Start**: ~15-30 Sekunden (ComfyUI + Model Loading)
+- **Warm Start**: ~2-5 Sekunden
+- **Workflow Execution**: Abhängig von Komplexität und Modell (5-120 Sekunden)
+- **Volume Save**: <1 Sekunde pro Bild
+
+## 💡 Technische Details
+
+- **Base Image**: `runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04`
+- **ComfyUI Version**: v0.3.57
+- **PyTorch**: 2.8.0 mit CUDA 12.8
+- **Vorinstallierte Modelle**: Stable Diffusion 1.5 (v1-5-pruned-emaonly)
+- **GPU Memory**: Optimiert mit `--normalvram` Flag
 
 ## 🤝 Contributing
 
