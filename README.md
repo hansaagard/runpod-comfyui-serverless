@@ -107,7 +107,7 @@ Test-Skripte sind nicht im Repository enthalten. Erstelle dein eigenes Test-Skri
 
 ```bash
 #!/bin/bash
-# WARNING: Do not commit real API keys or endpoint IDs to version control!
+# WARNUNG: Echte API-Schlüssel oder Endpoint-IDs nicht in die Versionsverwaltung committen!
 ENDPOINT_ID="your-endpoint-id"
 API_KEY="your-runpod-api-key"
 API_URL="https://api.runpod.ai/v2/${ENDPOINT_ID}/runsync"
