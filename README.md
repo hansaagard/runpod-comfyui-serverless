@@ -104,7 +104,7 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
 
 ## 🧪 Testing
 
-Test-Skripte sind nicht im Repository enthalten (siehe `.gitignore`). Erstelle dein eigenes Test-Script:
+Test-Skripte sind nicht im Repository enthalten (siehe `.gitignore`). Erstelle dein eigenes Test-Skript:
 
 ```bash
 #!/bin/bash
