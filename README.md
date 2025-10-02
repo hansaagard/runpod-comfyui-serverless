@@ -117,7 +117,7 @@ curl -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -d '{
     "input": {
-      "workflow": { /* dein ComfyUI Workflow */ }
+      "workflow": { /* dein ComfyUI-Workflow */ }
     }
   }'
 ```
