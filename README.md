@@ -31,7 +31,7 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
    docker build -t ecomtree/comfyui-serverless:latest -f Serverless.Dockerfile .
    ```
 
-3. **Image zu RunPod Registry pushen**
+3. **Image zu Docker Hub pushen**
    ```bash
    docker push ecomtree/comfyui-serverless:latest
    ```
