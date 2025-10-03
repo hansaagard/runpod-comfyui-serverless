@@ -93,16 +93,29 @@ fi
 # Disk Space Check (portable across Linux/macOS/BSD)
 log_info "Checking available disk space..."
 if df -h . > /dev/null 2>&1; then
-    # Use -h for human-readable, extract GB value portably
+    # Use -h for human-readable, extract value portably
     AVAILABLE_SPACE_RAW=$(df -h . | tail -1 | awk '{print $4}')
-    AVAILABLE_SPACE=$(echo "$AVAILABLE_SPACE_RAW" | sed 's/[^0-9.]//g' | cut -d. -f1)
+    
+    # Extract numeric value and unit (e.g., 9.8G, 512M, 1.2T)
+    AVAILABLE_SPACE_NUM=$(echo "$AVAILABLE_SPACE_RAW" | grep -oE '^[0-9]+(\.[0-9]+)?' || echo "0")
+    AVAILABLE_SPACE_UNIT=$(echo "$AVAILABLE_SPACE_RAW" | grep -oE '[KMGTP]' || echo "")
+    
+    # Convert to GB for comparison
+    case "$AVAILABLE_SPACE_UNIT" in
+        P) AVAILABLE_SPACE_GB=$(awk "BEGIN {printf \"%.0f\", $AVAILABLE_SPACE_NUM * 1024 * 1024}") ;;
+        T) AVAILABLE_SPACE_GB=$(awk "BEGIN {printf \"%.0f\", $AVAILABLE_SPACE_NUM * 1024}") ;;
+        G) AVAILABLE_SPACE_GB=$(awk "BEGIN {printf \"%.0f\", $AVAILABLE_SPACE_NUM}") ;;
+        M) AVAILABLE_SPACE_GB=$(awk "BEGIN {printf \"%.0f\", $AVAILABLE_SPACE_NUM / 1024}") ;;
+        K) AVAILABLE_SPACE_GB=0 ;; # Less than 1MB, treat as 0GB
+        *) AVAILABLE_SPACE_GB=0 ;; # Unknown unit or no unit
+    esac
     
     # Only warn if we got a numeric value
-    if [[ "$AVAILABLE_SPACE" =~ ^[0-9]+$ ]]; then
-        if [ "$AVAILABLE_SPACE" -lt 10 ]; then
-            log_warning "Low disk space available: ${AVAILABLE_SPACE}GB (minimum 10GB recommended)"
+    if [[ "$AVAILABLE_SPACE_GB" =~ ^[0-9]+$ ]] && [ "$AVAILABLE_SPACE_GB" -gt 0 ]; then
+        if [ "$AVAILABLE_SPACE_GB" -lt 10 ]; then
+            log_warning "Low disk space available: ${AVAILABLE_SPACE_GB}GB (minimum 10GB recommended)"
         else
-            log_success "Available disk space: ${AVAILABLE_SPACE}GB"
+            log_success "Available disk space: ${AVAILABLE_SPACE_GB}GB"
         fi
     else
         log_info "Available disk space: $AVAILABLE_SPACE_RAW"
@@ -485,12 +498,12 @@ docker build \
     .
 
 echo ""
-echo "✅ Build erfolgreich!"
+echo "✅ Build successful!"
 echo ""
 echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo ""
-echo "Nächste Schritte:"
-echo "  - Testen: docker run -it ${IMAGE_NAME}:${IMAGE_TAG} bash"
+echo "Next steps:"
+echo "  - Test: docker run -it ${IMAGE_NAME}:${IMAGE_TAG} bash"
 echo "  - Push: docker push ${IMAGE_NAME}:${IMAGE_TAG}"
 EOF
     chmod +x build-docker.sh
@@ -498,27 +511,27 @@ EOF
     # test-docker-local.sh
     cat > test-docker-local.sh << 'EOF'
 #!/bin/bash
-# Lokaler Docker Test
+# Local Docker Test
 
 set -e
 
 IMAGE_NAME="${IMAGE_NAME:-ecomtree/comfyui-serverless}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
-echo "🧪 Teste Docker Image lokal: ${IMAGE_NAME}:${IMAGE_TAG}"
+echo "🧪 Testing Docker Image locally: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo ""
 
-# Erstelle Test-Volume
+# Create test volume
 mkdir -p tmp/test-volume
 
-# Teste ob Image existiert
+# Test if image exists
 if ! docker image inspect "${IMAGE_NAME}:${IMAGE_TAG}" > /dev/null 2>&1; then
-    echo "❌ Image nicht gefunden: ${IMAGE_NAME}:${IMAGE_TAG}"
-    echo "Bitte zuerst bauen: ./build-docker.sh"
+    echo "❌ Image not found: ${IMAGE_NAME}:${IMAGE_TAG}"
+    echo "Please build first: ./build-docker.sh"
     exit 1
 fi
 
-echo "🚀 Starte Container im interaktiven Modus..."
+echo "🚀 Starting container in interactive mode..."
 echo ""
 
 docker run -it --rm \
