@@ -33,7 +33,7 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git && \
     pip install --no-cache-dir $(grep -v -E "^torch([^a-z]|$)|torchvision|torchaudio" requirements.txt | grep -v "^#" | grep -v "^$" | tr '\n' ' ') && \
     pip install --no-cache-dir librosa soundfile av moviepy
 
-# Download default SD 1.5 model für default-api.json workflow
+# Download default SD 1.5 model for default-api.json workflow
 RUN cd /workspace/ComfyUI/models/checkpoints && \
     wget -O v1-5-pruned-emaonly-fp16.safetensors \
     "https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors"

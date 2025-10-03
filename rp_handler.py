@@ -276,8 +276,60 @@ def _start_comfy():
     raise RuntimeError("ComfyUI could not be started.")
 
 
+def _workflow_has_nodes(workflow_dict: dict) -> bool:
+    """Return True when dict looks like a ComfyUI workflow (nodes with class_type)."""
+    if not isinstance(workflow_dict, dict):
+        return False
+    for node in workflow_dict.values():
+        if isinstance(node, dict) and node.get("class_type"):
+            return True
+    return False
+
+
+def _normalize_workflow(workflow_input):
+    """Accept workflow input in multiple formats and always return a dict."""
+    # Already a dict – ensure it contains actual Comfy nodes.
+    if isinstance(workflow_input, dict):
+        if _workflow_has_nodes(workflow_input):
+            return workflow_input
+
+        # Detect wrapper structures such as {"id": "...", "input": {...}}
+        wrapper_keys = ("workflow", "prompt", "input", "data")
+        for key in wrapper_keys:
+            if key in workflow_input:
+                candidate = _normalize_workflow(workflow_input[key])
+                if isinstance(candidate, dict) and _workflow_has_nodes(candidate):
+                    return candidate
+
+        raise ValueError(
+            "workflow dict contains no valid nodes with class_type – expected ComfyUI Workflow"
+        )
+
+    # Stringified JSON – attempt to decode recursively.
+    if isinstance(workflow_input, str):
+        stripped = workflow_input.strip()
+        if not stripped:
+            raise ValueError("workflow provided as empty string")
+        try:
+            decoded = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"workflow JSON could not be parsed: {exc}") from exc
+        normalized = _normalize_workflow(decoded)
+        if normalized is None:
+            raise ValueError("workflow JSON contains no valid structure")
+        return normalized
+
+    # Potential wrapper object with workflow key.
+    if isinstance(workflow_input, (list, tuple)):
+        raise TypeError("workflow must be an object (dict), not a list")
+
+    raise TypeError(f"workflow type not supported: {type(workflow_input).__name__}")
+
+
 def _run_workflow(workflow: dict):
     """Send workflow to Comfy and wait for result."""
+    if not isinstance(workflow, dict):
+        raise TypeError("workflow must be a dict")
     # ComfyUI API expects {"prompt": workflow, "client_id": uuid} format
     client_id = str(uuid.uuid4())
     payload = {"prompt": workflow, "client_id": client_id}
@@ -315,7 +367,11 @@ def _run_workflow(workflow: dict):
     print(f"📁 Output Dir: {output_dir}, exists: {output_dir.exists()}, writable: {os.access(output_dir, os.W_OK)}")
     
     # DEBUG: Validate Workflow structure
-    save_image_nodes = [node_id for node_id, node in workflow.items() if node.get("class_type") == "SaveImage"]
+    save_image_nodes = [
+        node_id
+        for node_id, node in workflow.items()
+        if isinstance(node, dict) and node.get("class_type") == "SaveImage"
+    ]
     print(f"💾 SaveImage Nodes found: {len(save_image_nodes)}")
     
     try:
@@ -423,9 +479,13 @@ def handler(event):
       - workflow: dict  (ComfyUI Workflow JSON)
     """
     inp = event.get("input", {})
-    workflow = inp.get("workflow")
-    if not workflow:
+    workflow_raw = inp.get("workflow")
+    if workflow_raw is None:
         raise ValueError("workflow missing in input")
+
+    workflow = _normalize_workflow(workflow_raw)
+    if not isinstance(workflow, dict) or not workflow:
+        raise ValueError("workflow is empty or has no valid format (dict expected)")
 
     raw_job_id = event.get("id") or event.get("requestId") or inp.get("jobId")
     job_id = _sanitize_job_id(raw_job_id)

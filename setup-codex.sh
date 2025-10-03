@@ -52,6 +52,30 @@ else
     cd runpod-comfyui-serverless
 fi
 
+echo_info "🌿 Ensuring repository is on main branch..."
+if git fetch origin main --tags; then
+    if git show-ref --verify --quiet refs/heads/main; then
+        if ! git checkout main; then
+            echo_warning "Local main branch broken – recreating from origin/main"
+            git checkout -B main origin/main
+        fi
+    else
+        git checkout -B main origin/main
+    fi
+
+    if git status --short --porcelain | grep -q ""; then
+        echo_warning "Local changes present – skipping git pull"
+    else
+        if git pull --ff-only origin main; then
+            echo_success "Branch main successfully updated"
+        else
+            echo_warning "Could not update main – please check manually"
+        fi
+    fi
+else
+    echo_warning "Fetch from origin/main failed – working with existing copy"
+fi
+
 # ============================================================
 # 3. Python Environment Setup
 # ============================================================
