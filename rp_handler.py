@@ -7,14 +7,28 @@ import requests
 import json
 import runpod
 import uuid
+import boto3
 from pathlib import Path
+from datetime import datetime, timedelta
+from botocore.exceptions import ClientError
 
 COMFY_PORT = int(os.getenv("COMFY_PORT", 8188))
 COMFY_HOST = os.getenv("COMFY_HOST", "127.0.0.1")
 COMFY_URL = f"http://{COMFY_HOST}:{COMFY_PORT}"  # Base URL für ComfyUI API
 OUTPUT_BASE = Path(os.getenv("RUNPOD_OUTPUT_DIR", os.getenv("RUNPOD_VOLUME_PATH", "/runpod-volume")))
 
+# S3 Configuration
+S3_BUCKET = os.getenv("S3_BUCKET")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")  # Für R2/Backblaze etc.
+S3_REGION = os.getenv("S3_REGION", "auto")
+S3_PUBLIC_URL = os.getenv("S3_PUBLIC_URL")  # Optional: Custom public URL (z.B. CDN)
+S3_SIGNED_URL_EXPIRY = int(os.getenv("S3_SIGNED_URL_EXPIRY", 3600))  # Sekunden (default: 1h)
+S3_UPLOAD_ENABLED = bool(S3_BUCKET and S3_ACCESS_KEY and S3_SECRET_KEY)
+
 _VOLUME_READY = False
+_S3_CLIENT = None
 
 
 def _check_volume_once() -> bool:
@@ -71,6 +85,103 @@ def _ensure_volume_ready(max_wait_seconds: float = 45.0) -> bool:
 
 def _volume_ready() -> bool:
     return _VOLUME_READY and OUTPUT_BASE.exists()
+
+
+def _get_s3_client():
+    """Get or create S3 client."""
+    global _S3_CLIENT
+    if _S3_CLIENT is None and S3_UPLOAD_ENABLED:
+        print(f"🔧 Initialisiere S3 Client (Bucket: {S3_BUCKET}, Region: {S3_REGION})")
+        _S3_CLIENT = boto3.client(
+            's3',
+            aws_access_key_id=S3_ACCESS_KEY,
+            aws_secret_access_key=S3_SECRET_KEY,
+            endpoint_url=S3_ENDPOINT_URL,
+            region_name=S3_REGION,
+        )
+        # Test connection
+        try:
+            _S3_CLIENT.head_bucket(Bucket=S3_BUCKET)
+            print(f"✅ S3 Bucket '{S3_BUCKET}' ist erreichbar")
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            print(f"⚠️ S3 Bucket Check fehlgeschlagen: {error_code} - {e}")
+            if error_code == '404':
+                print(f"❌ Bucket '{S3_BUCKET}' existiert nicht!")
+            elif error_code == '403':
+                print(f"❌ Keine Berechtigung für Bucket '{S3_BUCKET}'!")
+    return _S3_CLIENT
+
+
+def _upload_to_s3(file_path: Path, job_id: str | None = None) -> str:
+    """Upload file to S3 and return public/signed URL."""
+    if not S3_UPLOAD_ENABLED:
+        raise RuntimeError("S3 Upload ist nicht konfiguriert. Bitte S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY setzen.")
+    
+    s3_client = _get_s3_client()
+    if not s3_client:
+        raise RuntimeError("S3 Client konnte nicht initialisiert werden")
+    
+    # S3 Key generieren (Pfad im Bucket)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if job_id:
+        s3_key = f"{job_id}/{timestamp}_{file_path.name}"
+    else:
+        s3_key = f"{timestamp}_{file_path.name}"
+    
+    print(f"☁️ Uploading {file_path.name} zu S3: s3://{S3_BUCKET}/{s3_key}")
+    
+    # Content-Type bestimmen
+    content_type = "image/png"
+    if file_path.suffix.lower() == ".jpg" or file_path.suffix.lower() == ".jpeg":
+        content_type = "image/jpeg"
+    elif file_path.suffix.lower() == ".webp":
+        content_type = "image/webp"
+    elif file_path.suffix.lower() == ".mp4":
+        content_type = "video/mp4"
+    elif file_path.suffix.lower() == ".gif":
+        content_type = "image/gif"
+    
+    try:
+        # Upload mit public-read ACL (optional - kommentiere aus wenn du signed URLs bevorzugst)
+        extra_args = {
+            'ContentType': content_type,
+            # 'ACL': 'public-read',  # Uncomment für public files
+        }
+        
+        s3_client.upload_file(
+            str(file_path),
+            S3_BUCKET,
+            s3_key,
+            ExtraArgs=extra_args
+        )
+        
+        file_size = file_path.stat().st_size
+        print(f"✅ Upload erfolgreich! ({file_size} bytes)")
+        
+        # URL generieren
+        if S3_PUBLIC_URL:
+            # Custom public URL (z.B. CDN)
+            url = f"{S3_PUBLIC_URL.rstrip('/')}/{s3_key}"
+            print(f"🌐 Public URL: {url}")
+        else:
+            # Signed URL generieren
+            url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': S3_BUCKET, 'Key': s3_key},
+                ExpiresIn=S3_SIGNED_URL_EXPIRY
+            )
+            expiry_minutes = S3_SIGNED_URL_EXPIRY // 60
+            print(f"🔐 Signed URL generiert (gültig für {expiry_minutes} Minuten)")
+        
+        return url
+        
+    except ClientError as e:
+        print(f"❌ S3 Upload fehlgeschlagen: {e}")
+        raise
+    except Exception as e:
+        print(f"❌ Unerwarteter Fehler beim S3 Upload: {e}")
+        raise
 
 
 def _sanitize_job_id(job_id: str | None) -> str | None:
@@ -290,18 +401,25 @@ def handler(event):
     print(f"🆔 Runpod Job ID: {job_id}")
 
     print("🚀 Handler gestartet - ComfyUI Workflow wird verarbeitet...")
+    print(f"📦 S3 Upload: {'✅ Aktiviert' if S3_UPLOAD_ENABLED else '❌ Deaktiviert'}")
+    print(f"📦 Volume Storage: {'✅ Aktiviert' if not S3_UPLOAD_ENABLED else '⚠️ Fallback'}")
+    
     _start_comfy()
 
-    if not _ensure_volume_ready():
-        raise RuntimeError(
-            f"Network volume am Pfad {OUTPUT_BASE} wurde nicht innerhalb des Timeouts bereitgestellt"
-        )
+    # Volume nur checken wenn S3 nicht verfügbar ist
+    if not S3_UPLOAD_ENABLED:
+        if not _ensure_volume_ready():
+            raise RuntimeError(
+                f"Weder S3 noch Network Volume sind konfiguriert! "
+                f"Bitte S3 Umgebungsvariablen ODER Volume am Pfad {OUTPUT_BASE} bereitstellen."
+            )
 
     prompt_id = _run_workflow(workflow)
     result = _wait_for_completion(prompt_id)
     
     # ComfyUI History API Struktur: result["outputs"] enthält node outputs
     links = []
+    local_paths = []
     outputs = result.get("outputs", {})
     
     print(f"📁 Suche nach generierten Dateien in outputs...")
@@ -321,10 +439,30 @@ def handler(event):
                     
                     print(f"🖼️ Gefundenes Bild: {img_path}")
                     if img_path.exists():
-                        print(f"💾 Speichere auf Network Volume: {img_path}")
-                        network_file_path = _save_to_network_volume(img_path, job_id=job_id)
-                        links.append(network_file_path)
-                        print(f"✅ Erfolgreich gespeichert: {network_file_path}")
+                        # Upload zu S3 wenn aktiviert
+                        if S3_UPLOAD_ENABLED:
+                            try:
+                                s3_url = _upload_to_s3(img_path, job_id=job_id)
+                                links.append(s3_url)
+                                local_paths.append(str(img_path))
+                                print(f"✅ Erfolgreich zu S3 hochgeladen: {s3_url}")
+                            except Exception as e:
+                                print(f"❌ S3 Upload fehlgeschlagen: {e}")
+                                # Fallback zu Volume wenn verfügbar
+                                if _volume_ready():
+                                    print(f"⚠️ Fallback: Speichere auf Network Volume...")
+                                    network_file_path = _save_to_network_volume(img_path, job_id=job_id)
+                                    links.append(network_file_path)
+                                    local_paths.append(network_file_path)
+                                else:
+                                    raise RuntimeError(f"Weder S3 noch Volume verfügbar! {e}")
+                        else:
+                            # Nur Volume verwenden
+                            print(f"💾 Speichere auf Network Volume: {img_path}")
+                            network_file_path = _save_to_network_volume(img_path, job_id=job_id)
+                            links.append(network_file_path)
+                            local_paths.append(network_file_path)
+                            print(f"✅ Erfolgreich gespeichert: {network_file_path}")
                     else:
                         print(f"⚠️ Datei nicht gefunden: {img_path}")
 
@@ -335,17 +473,29 @@ def handler(event):
         if output_dir.exists():
             for img_file in output_dir.glob("*.png"):
                 print(f"💾 Fallback Speicherung: {img_file}")
-                network_file_path = _save_to_network_volume(img_file, job_id=job_id)
-                links.append(network_file_path)
+                if S3_UPLOAD_ENABLED:
+                    s3_url = _upload_to_s3(img_file, job_id=job_id)
+                    links.append(s3_url)
+                else:
+                    network_file_path = _save_to_network_volume(img_file, job_id=job_id)
+                    links.append(network_file_path)
 
-    return {
+    response = {
         "links": links,
         "total_images": len(links),
-        "comfy_result": result,
-        "output_base": str(OUTPUT_BASE),
         "job_id": job_id,
-        "saved_paths": links,
+        "storage_type": "s3" if S3_UPLOAD_ENABLED else "volume",
     }
+    
+    # Optionale zusätzliche Infos
+    if S3_UPLOAD_ENABLED:
+        response["s3_bucket"] = S3_BUCKET
+        response["local_paths"] = local_paths
+    else:
+        response["output_base"] = str(OUTPUT_BASE)
+        response["saved_paths"] = links
+    
+    return response
 
 
 if __name__ == "__main__":

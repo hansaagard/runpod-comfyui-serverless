@@ -42,10 +42,26 @@ Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflo
 
 Der Handler unterstützt folgende Umgebungsvariablen:
 
+#### ComfyUI Konfiguration
 - `COMFY_PORT`: ComfyUI Port (default: 8188)
 - `COMFY_HOST`: ComfyUI Host (default: 127.0.0.1)
+
+#### Storage Konfiguration (S3 oder Network Volume)
+
+**S3 Storage (Empfohlen für HTTP-Zugriff):**
+- `S3_BUCKET`: Name deines S3 Buckets (erforderlich)
+- `S3_ACCESS_KEY`: S3 Access Key ID (erforderlich)
+- `S3_SECRET_KEY`: S3 Secret Access Key (erforderlich)
+- `S3_ENDPOINT_URL`: Custom Endpoint für S3-kompatible Services (z.B. Cloudflare R2, Backblaze B2)
+- `S3_REGION`: S3 Region (default: "auto")
+- `S3_PUBLIC_URL`: Optional: Custom Public URL Prefix (z.B. CDN URL)
+- `S3_SIGNED_URL_EXPIRY`: Gültigkeitsdauer von Signed URLs in Sekunden (default: 3600)
+
+**Network Volume (Fallback):**
 - `RUNPOD_VOLUME_PATH`: Pfad zum Network Volume (default: /runpod-volume)
 - `RUNPOD_OUTPUT_DIR`: Alternatives Output-Verzeichnis (optional)
+
+**Hinweis:** Wenn S3 konfiguriert ist, wird es automatisch verwendet. Das Network Volume dient als Fallback.
 
 ### Workflow Konfiguration
 
@@ -84,6 +100,23 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
 
 ### Response Format
 
+**Mit S3 Storage:**
+```json
+{
+  "links": [
+    "https://your-bucket.s3.amazonaws.com/job-id/20250103_120530_output_image.png?X-Amz-..."
+  ],
+  "total_images": 1,
+  "job_id": "abc123",
+  "storage_type": "s3",
+  "s3_bucket": "your-bucket",
+  "local_paths": [
+    "/workspace/ComfyUI/output/output_image.png"
+  ]
+}
+```
+
+**Mit Network Volume:**
 ```json
 {
   "links": [
@@ -91,15 +124,66 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
   ],
   "total_images": 1,
   "job_id": "abc123",
+  "storage_type": "volume",
+  "output_base": "/runpod-volume",
   "saved_paths": [
     "/runpod-volume/job-id/output_image.png"
-  ],
-  "output_base": "/runpod-volume",
-  "comfy_result": {
-    // ComfyUI execution result
-  }
+  ]
 }
 ```
+
+## ☁️ S3 Setup Guide
+
+### Cloudflare R2 (Empfohlen - Kostenlos bis 10GB)
+
+1. **R2 Bucket erstellen:**
+   - Gehe zu [Cloudflare Dashboard](https://dash.cloudflare.com/) → R2
+   - Erstelle neuen Bucket (z.B. `comfyui-outputs`)
+
+2. **API Token erstellen:**
+   - R2 → Manage R2 API Tokens → Create API Token
+   - Notiere: Access Key ID, Secret Access Key
+   - Endpoint URL: `https://<account-id>.r2.cloudflarestorage.com`
+
+3. **Umgebungsvariablen in RunPod setzen:**
+   ```
+   S3_BUCKET=comfyui-outputs
+   S3_ACCESS_KEY=<your-access-key>
+   S3_SECRET_KEY=<your-secret-key>
+   S3_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+   S3_REGION=auto
+   ```
+
+### AWS S3
+
+1. **S3 Bucket erstellen:**
+   - [AWS Console](https://console.aws.amazon.com/s3/) → Create Bucket
+   - Region wählen (z.B. `us-east-1`)
+
+2. **IAM User & Credentials:**
+   - IAM → Users → Add User
+   - Permissions: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`
+
+3. **Umgebungsvariablen:**
+   ```
+   S3_BUCKET=your-bucket-name
+   S3_ACCESS_KEY=<aws-access-key>
+   S3_SECRET_KEY=<aws-secret-key>
+   S3_REGION=us-east-1
+   ```
+
+### Backblaze B2
+
+1. **Bucket erstellen:** [Backblaze Console](https://www.backblaze.com/b2/cloud-storage.html)
+2. **Application Key erstellen:** Notiere Key ID & Key
+3. **Umgebungsvariablen:**
+   ```
+   S3_BUCKET=your-bucket-name
+   S3_ACCESS_KEY=<key-id>
+   S3_SECRET_KEY=<application-key>
+   S3_ENDPOINT_URL=https://s3.us-west-002.backblazeb2.com
+   S3_REGION=us-west-002
+   ```
 
 ## 🧪 Testing
 
