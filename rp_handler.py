@@ -115,7 +115,26 @@ def _get_s3_client():
 
 
 def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
-    """Upload file to S3 and return public/signed URL."""
+    """
+    Upload a file to the configured S3 bucket and return a public or signed URL.
+
+    Parameters:
+        file_path (Path): The path to the file to upload.
+        job_id (Optional[str]): An optional job identifier. If provided, it is used as a prefix in the S3 object key.
+
+    Returns:
+        str: The public or signed URL to access the uploaded file.
+
+    Raises:
+        RuntimeError: If S3 upload is not configured or the S3 client cannot be initialized.
+        botocore.exceptions.ClientError: If the upload to S3 fails.
+
+    S3 Key Generation Strategy:
+        The S3 object key is generated as follows:
+            - If job_id is provided: "{job_id}/{timestamp}_{filename}"
+            - If job_id is not provided: "{timestamp}_{filename}"
+        where 'timestamp' is the current date and time in "YYYYMMDD_HHMMSS" format, and 'filename' is the name of the file.
+    """
     if not S3_UPLOAD_ENABLED:
         raise RuntimeError("S3 Upload ist nicht konfiguriert. Bitte S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY setzen.")
     
