@@ -1,26 +1,26 @@
-# Setup Scripts Übersicht
+# Setup Scripts Overview
 
-Dieses Repository enthält **zwei** Setup-Skripte für unterschiedliche Anwendungsfälle:
+This repository contains a setup script for Codex Web UI environment configuration.
 
-## 🌐 setup-codex.sh - Für Codex Web UI
+## 🌐 setup-codex.sh - For Codex Web UI
 
-**Verwendung:** Wenn du das Projekt in der **Codex Web UI** verwendest
+**Use this when:** Working with the project in the **Codex Web UI**
 
-### Eigenschaften:
-- ✅ **Schlank & schnell** (~30 Sekunden)
-- ✅ Keine Virtual Environment (nicht nötig in Codex)
-- ✅ Nur essenzielle Pakete (runpod, requests, boto3, etc.)
-- ✅ Optimiert für vorinstallierte Umgebung (Python 3.12, Node.js 20, etc.)
-- ✅ Erstellt `.env.example` für Konfiguration
+### Features:
+- ✅ **Fast & lightweight** (~30 seconds)
+- ✅ No virtual environment needed (not necessary in Codex)
+- ✅ Only essential packages (runpod, requests, boto3, Pillow, numpy)
+- ✅ Optimized for pre-installed environment (Python 3.12, Node.js 20, etc.)
+- ✅ Creates `.env.example` for configuration
 
-### In Codex verwenden:
+### Usage in Codex:
 
-**Option A - Direkt vom Repo:**
+**Option A - Direct from repo:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EcomTree/runpod-comfyui-serverless/main/setup-codex.sh | bash
 ```
 
-**Option B - Nach dem Clone:**
+**Option B - After cloning:**
 ```bash
 git clone https://github.com/EcomTree/runpod-comfyui-serverless.git /workspace/runpod-comfyui-serverless
 cd /workspace/runpod-comfyui-serverless
@@ -28,83 +28,70 @@ chmod +x setup-codex.sh
 ./setup-codex.sh
 ```
 
-### In Codex Web UI eintragen:
+### Add to Codex Web UI:
 
-Unter **"Setup-Skript"** → **"Manuell"**:
+Under **"Setup Script"** → **"Manual"**:
 ```bash
 git clone https://github.com/EcomTree/runpod-comfyui-serverless.git /workspace/runpod-comfyui-serverless && cd /workspace/runpod-comfyui-serverless && chmod +x setup-codex.sh && ./setup-codex.sh
 ```
 
-📖 **Vollständige Anleitung:** Siehe `CODEX_SETUP.md`
+📖 **Complete guide:** See `CODEX_SETUP.md`
 
 ---
 
-## 💻 setup-dev.sh - Für lokale Entwicklung
+## 💻 Local Development
 
-**Verwendung:** Wenn du das Projekt **lokal auf deinem Mac/PC** entwickelst
+For local development on your Mac/PC, you can:
 
-### Eigenschaften:
-- 🔧 **Vollständige Dev-Umgebung** (~5-10 Minuten)
-- 🔧 Erstellt Python Virtual Environment
-- 🔧 Installiert Dev-Tools (pytest, black, flake8, mypy, etc.)
-- 🔧 Optional: ComfyUI Clone für lokales Testing
-- 🔧 Docker Helper Scripts
-- 🔧 Test Suite mit Beispiel-Tests
-- 🔧 Code Quality Tools (Linting, Formatting)
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/EcomTree/runpod-comfyui-serverless.git
+   cd runpod-comfyui-serverless
+   ```
 
-### Lokal verwenden:
+2. **Install Python dependencies manually**
+   ```bash
+   # Create virtual environment (optional but recommended)
+   python3 -m venv .venv
+   source .venv/bin/activate
+   
+   # Install core dependencies
+   pip install runpod requests boto3 Pillow numpy
+   ```
 
-```bash
-# Repository klonen
-git clone https://github.com/EcomTree/runpod-comfyui-serverless.git
-cd runpod-comfyui-serverless
+3. **Configure environment**
+   ```bash
+   # Copy and edit .env
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
 
-# Setup ausführen (interaktiv)
-chmod +x setup-dev.sh
-./setup-dev.sh
-
-# Danach: Virtual Environment aktivieren
-source .venv/bin/activate
-```
-
-### Was wird erstellt:
-```
-.
-├── .venv/                    # Python Virtual Environment
-├── requirements-dev.txt      # Development Dependencies
-├── pytest.ini                # Test Konfiguration
-├── pyproject.toml            # Tool Konfiguration (black, isort, mypy)
-├── .flake8                   # Linter Config
-├── tests/                    # Test Suite
-│   ├── unit/                 # Unit Tests
-│   └── integration/          # Integration Tests
-├── .codex/                   # Codex Konfiguration & Doku
-│   ├── config.json
-│   └── development.md
-├── build-docker.sh           # Docker Build Helper
-├── test-docker-local.sh      # Docker Test Helper
-├── start-dev.sh              # Quick-Start für Dev
-└── ComfyUI/                  # Optional: Lokale ComfyUI Installation
-```
+4. **Test locally**
+   ```bash
+   # Run handler tests
+   python3 -m py_compile rp_handler.py
+   
+   # Or build Docker image
+   docker build -t comfyui-serverless -f Serverless.Dockerfile .
+   ```
 
 ---
 
-## 🤔 Welches Skript soll ich verwenden?
+## 🤔 Which approach should I use?
 
-| Szenario | Skript | Grund |
-|----------|--------|-------|
-| 🌐 Codex Web UI | `setup-codex.sh` | Schnell, schlank, für Cloud-Umgebung optimiert |
-| 💻 Lokale Entwicklung auf Mac/PC | `setup-dev.sh` | Vollständige Dev-Tools, Virtual Environment |
-| 🐳 Nur Docker Build | Keins nötig | Dockerfile hat alles |
-| 🚀 RunPod Serverless Deployment | Keins nötig | Container wird direkt deployed |
+| Scenario | Approach | Reason |
+|----------|----------|--------|
+| 🌐 Codex Web UI | `setup-codex.sh` | Fast, lightweight, optimized for cloud |
+| 💻 Local Development | Manual setup | Full control, custom configuration |
+| 🐳 Docker Build Only | None needed | Dockerfile has everything |
+| 🚀 RunPod Serverless | None needed | Container deployed directly |
 
 ---
 
-## 📝 Weitere Dokumente
+## 📝 Additional Documentation
 
-- **CODEX_SETUP.md** - Detaillierte Anleitung für Codex Web UI
-- **SETUP_GUIDE.md** - Allgemeine Setup-Anleitung
-- **README.md** - Projekt-Übersicht
+- **CODEX_SETUP.md** - Detailed guide for Codex Web UI
+- **README.md** - Project overview and usage
 
 ---
 
@@ -112,24 +99,52 @@ source .venv/bin/activate
 
 ### Codex: "setup-codex.sh not found"
 ```bash
-# Stelle sicher dass du im richtigen Verzeichnis bist:
+# Make sure you're in the right directory:
 cd /workspace/runpod-comfyui-serverless
 ls -la setup-codex.sh
 
-# Falls nicht vorhanden, neu klonen:
+# If not present, clone again:
 git clone https://github.com/EcomTree/runpod-comfyui-serverless.git
 ```
 
-### Lokal: "setup-dev.sh: Permission denied"
+### Local: "Permission denied"
 ```bash
-chmod +x setup-dev.sh
-./setup-dev.sh
+chmod +x setup-codex.sh
+./setup-codex.sh
 ```
 
 ### "Python version too old"
-- **Codex:** Sollte Python 3.12 haben (automatisch)
-- **Lokal:** Installiere Python 3.11+ von [python.org](https://python.org)
+- **Codex:** Should have Python 3.12 automatically
+- **Local:** Install Python 3.11+ from [python.org](https://python.org)
+
+### Missing dependencies
+```bash
+# In Codex or local:
+python3 -m pip install runpod requests boto3 Pillow numpy
+```
 
 ---
 
-**Tipp:** Beide Skripte sind idempotent - du kannst sie mehrfach ausführen ohne Probleme! ✅
+## 🔍 What the setup script does:
+
+1. **Clones repository** (if not in /workspace)
+2. **Checks Python version** (Python 3.11+)
+3. **Installs dependencies:**
+   - runpod - RunPod SDK
+   - requests - HTTP client
+   - boto3 - AWS S3 SDK
+   - Pillow - Image processing
+   - numpy - Numerical computing
+4. **Installs system tools:**
+   - jq - JSON processor
+   - curl - HTTP client
+5. **Creates `.env.example`** template
+6. **Sets up directories:**
+   - /workspace/outputs
+   - /workspace/logs
+7. **Configures git** (if not already configured)
+8. **Makes test scripts executable**
+
+---
+
+**Tip:** The script is idempotent - you can run it multiple times safely! ✅
