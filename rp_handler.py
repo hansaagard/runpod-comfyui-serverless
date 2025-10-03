@@ -137,12 +137,6 @@ def _volume_ready() -> bool:
     return _VOLUME_READY and OUTPUT_BASE.exists()
 
 
-def _get_s3_client():
-    """Get or create S3 client using singleton manager."""
-    s3_manager = S3ClientManager()
-    return s3_manager.get_client()
-
-
 def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     """
     Upload a file to S3 and return a public or signed URL.
@@ -161,13 +155,13 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     if not S3_UPLOAD_ENABLED:
         raise RuntimeError("S3 Upload ist nicht konfiguriert. Bitte S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY setzen.")
     
-    s3_client = _get_s3_client()
+    s3_client = S3ClientManager().get_client()
     if not s3_client:
         raise RuntimeError("S3 Client konnte nicht initialisiert werden")
     
     # S3 Key generieren (Pfad im Bucket)
     # Strategy: {job_id}/{timestamp}_{unique_id}_{filename} wenn job_id vorhanden, sonst {timestamp}_{unique_id}_{filename}
-    # timestamp format: YYYYMMDD_HHMMSS_ffffff (UTC with microseconds)
+    # timestamp format: YYYYMMDD_HHMMSS_ffffff (UTC with 6-digit microseconds, zero-padded)
     # unique_id: 8-char hex to prevent collisions in high-concurrency scenarios
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     unique_id = uuid.uuid4().hex[:8]
@@ -190,7 +184,7 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
         content_type = "image/gif"
     
     try:
-        # Set content type for the uploaded object
+        # Set content type for the uploaded object (not for signed URLs)
         extra_args = {
             'ContentType': content_type,
         }
@@ -453,7 +447,7 @@ def handler(event):
             print("⚠️ Volume nicht verfügbar - S3 Upload wird verwendet, aber kein Fallback möglich")
         else:
             raise RuntimeError(
-                f"Network Volume Mount fehlgeschlagen und S3 ist nicht konfiguriert! "
+                f"Network Volume konnte nicht gemountet werden und S3 ist nicht konfiguriert! "
                 f"Bitte entweder S3-Umgebungsvariablen setzen oder sicherstellen, dass das Volume am Pfad {OUTPUT_BASE} bereitgestellt ist."
             )
 
@@ -501,7 +495,9 @@ def handler(event):
                                         print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
                                     except Exception as vol_err:
                                         print(f"❌ Volume-Speicherung fehlgeschlagen: {vol_err}")
-                                        raise RuntimeError(f"S3 Upload fehlgeschlagen und Volume-Fallback nicht verfügbar für {img_path.name}")
+                                        raise RuntimeError(
+                                            f"S3 Upload fehlgeschlagen und Volume-Fallback nicht verfügbar für {img_path.name}"
+                                        )
                                 else:
                                     print(f"❌ Kein Volume-Fallback verfügbar für {img_path.name}")
                                     raise RuntimeError(f"S3 Upload fehlgeschlagen und kein Volume-Fallback verfügbar")
@@ -510,6 +506,7 @@ def handler(event):
                             print(f"💾 Speichere auf Network Volume: {img_path}")
                             network_file_path = _save_to_network_volume(img_path, job_id=job_id)
                             links.append(network_file_path)
+                            # Store original local path for consistency with S3 mode
                             local_paths.append(str(img_path))
                             print(f"✅ Erfolgreich gespeichert: {network_file_path}")
                     else:
@@ -543,6 +540,7 @@ def handler(event):
                 else:
                     network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                     links.append(network_file_path)
+                    # Store original local path for consistency with S3 mode
                     local_paths.append(str(img_file))
     response = {
         "links": links,
