@@ -166,13 +166,15 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
         raise RuntimeError("S3 Client konnte nicht initialisiert werden")
     
     # S3 Key generieren (Pfad im Bucket)
-    # Strategy: {job_id}/{timestamp}_{filename} wenn job_id vorhanden, sonst {timestamp}_{filename}
-    # timestamp format: YYYYMMDD_HHMMSS (UTC)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    # Strategy: {job_id}/{timestamp}_{unique_id}_{filename} wenn job_id vorhanden, sonst {timestamp}_{unique_id}_{filename}
+    # timestamp format: YYYYMMDD_HHMMSS_ffffff (UTC with microseconds)
+    # unique_id: 8-char hex to prevent collisions in high-concurrency scenarios
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    unique_id = uuid.uuid4().hex[:8]
     if job_id:
-        s3_key = f"{job_id}/{timestamp}_{file_path.name}"
+        s3_key = f"{job_id}/{timestamp}_{unique_id}_{file_path.name}"
     else:
-        s3_key = f"{timestamp}_{file_path.name}"
+        s3_key = f"{timestamp}_{unique_id}_{file_path.name}"
     
     print(f"☁️ Uploading {file_path.name} zu S3: s3://{S3_BUCKET}/{s3_key}")
     
@@ -188,7 +190,7 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
         content_type = "image/gif"
     
     try:
-        # Upload with content type - using signed URLs for security
+        # Set content type for the uploaded object
         extra_args = {
             'ContentType': content_type,
         }
@@ -451,8 +453,8 @@ def handler(event):
             print("⚠️ Volume nicht verfügbar - S3 Upload wird verwendet, aber kein Fallback möglich")
         else:
             raise RuntimeError(
-                f"Weder S3 noch Network Volume sind konfiguriert! "
-                f"Bitte S3 Umgebungsvariablen ODER Volume am Pfad {OUTPUT_BASE} bereitstellen."
+                f"Network Volume Mount fehlgeschlagen und S3 ist nicht konfiguriert! "
+                f"Bitte entweder S3-Umgebungsvariablen setzen oder sicherstellen, dass das Volume am Pfad {OUTPUT_BASE} bereitgestellt ist."
             )
 
     prompt_id = _run_workflow(workflow)
@@ -499,7 +501,7 @@ def handler(event):
                                         print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
                                     except Exception as vol_err:
                                         print(f"❌ Volume-Speicherung fehlgeschlagen: {vol_err}")
-                                        raise RuntimeError(f"Weder S3 noch Volume verfügbar für {img_path.name}")
+                                        raise RuntimeError(f"S3 Upload fehlgeschlagen und Volume-Fallback nicht verfügbar für {img_path.name}")
                                 else:
                                     print(f"❌ Kein Volume-Fallback verfügbar für {img_path.name}")
                                     raise RuntimeError(f"S3 Upload fehlgeschlagen und kein Volume-Fallback verfügbar")
@@ -508,7 +510,7 @@ def handler(event):
                             print(f"💾 Speichere auf Network Volume: {img_path}")
                             network_file_path = _save_to_network_volume(img_path, job_id=job_id)
                             links.append(network_file_path)
-                            local_paths.append(network_file_path)
+                            local_paths.append(str(img_path))
                             print(f"✅ Erfolgreich gespeichert: {network_file_path}")
                     else:
                         print(f"⚠️ Datei nicht gefunden: {img_path}")
@@ -532,7 +534,7 @@ def handler(event):
                             try:
                                 network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                                 links.append(network_file_path)
-                                local_paths.append(network_file_path)
+                                local_paths.append(str(img_file))
                                 print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
                             except Exception as vol_err:
                                 print(f"❌ Volume-Speicherung fehlgeschlagen für {img_file.name}: {vol_err}")
@@ -541,7 +543,7 @@ def handler(event):
                 else:
                     network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                     links.append(network_file_path)
-                    local_paths.append(network_file_path)
+                    local_paths.append(str(img_file))
     response = {
         "links": links,
         "total_images": len(links),
