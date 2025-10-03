@@ -14,16 +14,7 @@ Dieses Dokument beschreibt, wie du das RunPod ComfyUI Serverless Repo in der Cod
    - Füge folgenden Befehl ein:
 
 ```bash
-# e.g.
-pip install -r requirements.txt
-npm install
-./run/maintenance_setup.sh
-```
-
-**Ändere das zu:**
-
-```bash
-# Codex Setup für RunPod ComfyUI Serverless
+# Codex Setup for RunPod ComfyUI Serverless
 curl -fsSL https://raw.githubusercontent.com/EcomTree/runpod-comfyui-serverless/main/setup-codex.sh | bash
 ```
 

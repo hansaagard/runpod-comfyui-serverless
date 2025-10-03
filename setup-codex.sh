@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Codex Setup Script für RunPod Serverless Environment
-# Dieses Skript richtet die Codex-Umgebung für das ComfyUI Serverless Repo ein
+# Codex Setup Script for RunPod Serverless Environment
+# This script sets up the Codex environment for the ComfyUI Serverless repo
 #
 
 set -e  # Exit on error
 
-# Farben für bessere Lesbarkeit
+# Colors for better readability
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -29,91 +29,90 @@ echo_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
-echo_info "🚀 Starte Codex Umgebungs-Setup für RunPod ComfyUI Serverless..."
+echo_info "🚀 Starting Codex environment setup for RunPod ComfyUI Serverless..."
 
 # ============================================================
-# 1. Workspace-Verzeichnis erstellen
+# 1. Create Workspace Directory
 # ============================================================
-echo_info "📁 Erstelle Workspace-Struktur..."
+echo_info "📁 Creating workspace structure..."
 mkdir -p /workspace
 cd /workspace
-echo_success "Workspace bereit: $(pwd)"
+echo_success "Workspace ready: $(pwd)"
 
 # ============================================================
-# 2. Repository klonen (falls nicht vorhanden)
+# 2. Clone Repository (if not present)
 # ============================================================
 if [ ! -d "/workspace/runpod-comfyui-serverless" ]; then
-    echo_info "📦 Klone Repository..."
+    echo_info "📦 Cloning repository..."
     git clone https://github.com/EcomTree/runpod-comfyui-serverless.git
     cd runpod-comfyui-serverless
-    echo_success "Repository geklont"
+    echo_success "Repository cloned"
 else
-    echo_warning "Repository existiert bereits, überspringe Klonen"
+    echo_warning "Repository already exists, skipping clone"
     cd runpod-comfyui-serverless
 fi
 
 # ============================================================
 # 3. Python Environment Setup
 # ============================================================
-echo_info "🐍 Richte Python-Umgebung ein..."
+echo_info "🐍 Setting up Python environment..."
 
-# Python Version prüfen (sollte bereits 3.12 sein laut Screenshot)
+# Check Python version (should be 3.12 according to screenshot)
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 echo_info "Python Version: $PYTHON_VERSION"
 
-# Pip upgrade (wichtig für neueste Pakete)
+# Pip upgrade (important for latest packages)
 python3 -m pip install --upgrade pip setuptools wheel
 
-# Python Dependencies für das Projekt installieren
-echo_info "📦 Installiere Python-Abhängigkeiten..."
+# Install Python dependencies for the project
+echo_info "📦 Installing Python dependencies..."
 python3 -m pip install --no-cache-dir \
     runpod \
     requests \
     boto3 \
     Pillow \
-    numpy \
-    pathlib
+    numpy
 
-echo_success "Python-Abhängigkeiten installiert"
+echo_success "Python dependencies installed"
 
 # ============================================================
-# 4. System-Tools (falls noch nicht vorhanden)
+# 4. System Tools (if not already present)
 # ============================================================
-echo_info "🔧 Prüfe System-Tools..."
+echo_info "🔧 Checking system tools..."
 
-# jq für JSON-Verarbeitung (nützlich für Debugging)
+# jq for JSON processing (useful for debugging)
 if ! command -v jq &> /dev/null; then
-    echo_info "Installiere jq..."
+    echo_info "Installing jq..."
     apt-get update -qq
     apt-get install -y jq
-    echo_success "jq installiert"
+    echo_success "jq installed"
 else
-    echo_success "jq bereits vorhanden"
+    echo_success "jq already available"
 fi
 
-# curl für API-Tests
+# curl for API tests
 if ! command -v curl &> /dev/null; then
-    echo_info "Installiere curl..."
+    echo_info "Installing curl..."
     apt-get update -qq
     apt-get install -y curl
-    echo_success "curl installiert"
+    echo_success "curl installed"
 else
-    echo_success "curl bereits vorhanden"
+    echo_success "curl already available"
 fi
 
 # ============================================================
-# 5. Umgebungsvariablen Setup
+# 5. Environment Variables Setup
 # ============================================================
-echo_info "🌍 Konfiguriere Umgebungsvariablen..."
+echo_info "🌍 Configuring environment variables..."
 
-# Erstelle .env Template falls nicht vorhanden
+# Create .env template if not present
 if [ ! -f ".env.example" ]; then
     cat > .env.example << 'EOF'
-# ComfyUI Konfiguration
+# ComfyUI Configuration
 COMFY_PORT=8188
 COMFY_HOST=127.0.0.1
 
-# Storage Konfiguration - S3 (Empfohlen)
+# Storage Configuration - S3 (Recommended)
 S3_BUCKET=
 S3_ACCESS_KEY=
 S3_SECRET_KEY=
@@ -126,49 +125,57 @@ S3_SIGNED_URL_EXPIRY=3600
 RUNPOD_VOLUME_PATH=/runpod-volume
 RUNPOD_OUTPUT_DIR=
 EOF
-    echo_success ".env.example erstellt"
+    echo_success ".env.example created"
 fi
 
 # ============================================================
-# 6. Verzeichnisstruktur für Outputs
+# 6. Output Directory Structure
 # ============================================================
-echo_info "📂 Erstelle Output-Verzeichnisse..."
+echo_info "📂 Creating output directories..."
 mkdir -p /workspace/outputs
 mkdir -p /workspace/logs
-mkdir -p /runpod-volume || echo_warning "Network Volume nicht verfügbar (normal in Codex)"
-echo_success "Verzeichnisstruktur erstellt"
+mkdir -p /runpod-volume || echo_warning "Network Volume not available (normal in Codex)"
+echo_success "Directory structure created"
 
 # ============================================================
-# 7. Test-Skript vorbereiten
+# 7. Prepare Test Script
 # ============================================================
-echo_info "🧪 Bereite Test-Umgebung vor..."
+echo_info "🧪 Preparing test environment..."
 
-# Mache test_endpoint.sh ausführbar
+# Make test_endpoint.sh executable
 if [ -f "test_endpoint.sh" ]; then
     chmod +x test_endpoint.sh
-    echo_success "Test-Skript ausführbar gemacht"
+    echo_success "Test script made executable"
 fi
 
 # ============================================================
-# 8. Git Konfiguration (für Codex)
+# 8. Git Configuration (optional, can be customized)
 # ============================================================
-echo_info "🔧 Konfiguriere Git..."
-git config --global user.email "codex@ecomtree.dev" || true
-git config --global user.name "Codex Environment" || true
+echo_info "🔧 Configuring Git..."
+
+# Only set git config if not already set
+if [ -z "$(git config --global user.email)" ]; then
+    git config --global user.email "${GIT_USER_EMAIL:-codex@example.com}" || true
+fi
+
+if [ -z "$(git config --global user.name)" ]; then
+    git config --global user.name "${GIT_USER_NAME:-Codex User}" || true
+fi
+
 git config --global init.defaultBranch main || true
-echo_success "Git konfiguriert"
+echo_success "Git configured"
 
 # ============================================================
-# 9. Validierung & Zusammenfassung
+# 9. Validation & Summary
 # ============================================================
 echo ""
-echo_success "✨ Setup erfolgreich abgeschlossen!"
+echo_success "✨ Setup completed successfully!"
 echo ""
-echo_info "📋 Zusammenfassung der installierten Komponenten:"
+echo_info "📋 Summary of installed components:"
 echo "   ├─ Python: $(python3 --version | awk '{print $2}')"
 echo "   ├─ pip: $(pip3 --version | awk '{print $2}')"
-echo "   ├─ Node.js: $(node --version 2>/dev/null || echo 'nicht verfügbar')"
-echo "   ├─ jq: $(jq --version 2>/dev/null || echo 'nicht verfügbar')"
+echo "   ├─ Node.js: $(node --version 2>/dev/null || echo 'not available')"
+echo "   ├─ jq: $(jq --version 2>/dev/null || echo 'not available')"
 echo "   ├─ curl: $(curl --version | head -n1 | awk '{print $2}')"
 echo "   └─ git: $(git --version | awk '{print $3}')"
 echo ""
@@ -176,9 +183,9 @@ echo_info "📁 Workspace: $(pwd)"
 echo_info "📂 Logs: /workspace/logs"
 echo_info "📂 Outputs: /workspace/outputs"
 echo ""
-echo_info "📝 Nächste Schritte:"
-echo "   1. Kopiere .env.example zu .env und fülle die Werte aus"
-echo "   2. Teste den Handler mit: python3 rp_handler.py (lokal)"
-echo "   3. Oder baue das Docker Image: docker build -f Serverless.Dockerfile ."
+echo_info "📝 Next steps:"
+echo "   1. Copy .env.example to .env and fill in the values"
+echo "   2. Test the handler with: python3 rp_handler.py (locally)"
+echo "   3. Or build the Docker image: docker build -f Serverless.Dockerfile ."
 echo ""
-echo_success "🎉 Codex Environment ist bereit!"
+echo_success "🎉 Codex Environment is ready!"

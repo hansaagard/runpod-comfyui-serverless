@@ -17,7 +17,7 @@ Dieses Repository enthält **zwei** Setup-Skripte für unterschiedliche Anwendun
 
 **Option A - Direkt vom Repo:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EcomTree/runpod-comfyui-serverless/cursor/setup-codex-environment-script-486d/setup-codex.sh | bash
+curl -fsSL https://raw.githubusercontent.com/EcomTree/runpod-comfyui-serverless/main/setup-codex.sh | bash
 ```
 
 **Option B - Nach dem Clone:**
