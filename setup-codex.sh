@@ -52,6 +52,30 @@ else
     cd runpod-comfyui-serverless
 fi
 
+echo_info "🌿 Ensuring repository is on main branch..."
+if git fetch origin main --tags; then
+    if git show-ref --verify --quiet refs/heads/main; then
+        if ! git checkout main; then
+            echo_warning "Lokaler Branch main defekt – neu aus origin/main erstellen"
+            git checkout -B main origin/main
+        fi
+    else
+        git checkout -B main origin/main
+    fi
+
+    if git status --short --porcelain | grep -q ""; then
+        echo_warning "Lokale Änderungen vorhanden – git pull wird übersprungen"
+    else
+        if git pull --ff-only origin main; then
+            echo_success "Branch main erfolgreich aktualisiert"
+        else
+            echo_warning "Konnte main nicht aktualisieren – bitte manuell prüfen"
+        fi
+    fi
+else
+    echo_warning "Fetch von origin/main fehlgeschlagen – arbeite mit vorhandener Kopie"
+fi
+
 # ============================================================
 # 3. Python Environment Setup
 # ============================================================

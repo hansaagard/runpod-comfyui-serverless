@@ -276,8 +276,37 @@ def _start_comfy():
     raise RuntimeError("ComfyUI could not be started.")
 
 
+def _normalize_workflow(workflow_input):
+    """Accept workflow input in multiple formats and always return a dict."""
+    # Already a dict – nothing to do.
+    if isinstance(workflow_input, dict):
+        return workflow_input
+
+    # Stringified JSON – attempt to decode recursively.
+    if isinstance(workflow_input, str):
+        stripped = workflow_input.strip()
+        if not stripped:
+            raise ValueError("workflow provided as empty string")
+        try:
+            decoded = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"workflow JSON konnte nicht geparsed werden: {exc}") from exc
+        normalized = _normalize_workflow(decoded)
+        if normalized is None:
+            raise ValueError("workflow JSON enthält keine gültige Struktur")
+        return normalized
+
+    # Potential wrapper object with workflow key.
+    if isinstance(workflow_input, (list, tuple)):
+        raise TypeError("workflow muss ein Objekt (dict) sein, keine Liste")
+
+    raise TypeError(f"workflow Typ wird nicht unterstützt: {type(workflow_input).__name__}")
+
+
 def _run_workflow(workflow: dict):
     """Send workflow to Comfy and wait for result."""
+    if not isinstance(workflow, dict):
+        raise TypeError("workflow muss ein dict sein")
     # ComfyUI API expects {"prompt": workflow, "client_id": uuid} format
     client_id = str(uuid.uuid4())
     payload = {"prompt": workflow, "client_id": client_id}
@@ -315,7 +344,11 @@ def _run_workflow(workflow: dict):
     print(f"📁 Output Dir: {output_dir}, exists: {output_dir.exists()}, writable: {os.access(output_dir, os.W_OK)}")
     
     # DEBUG: Validate Workflow structure
-    save_image_nodes = [node_id for node_id, node in workflow.items() if node.get("class_type") == "SaveImage"]
+    save_image_nodes = [
+        node_id
+        for node_id, node in workflow.items()
+        if isinstance(node, dict) and node.get("class_type") == "SaveImage"
+    ]
     print(f"💾 SaveImage Nodes found: {len(save_image_nodes)}")
     
     try:
@@ -423,9 +456,13 @@ def handler(event):
       - workflow: dict  (ComfyUI Workflow JSON)
     """
     inp = event.get("input", {})
-    workflow = inp.get("workflow")
-    if not workflow:
+    workflow_raw = inp.get("workflow")
+    if workflow_raw is None:
         raise ValueError("workflow missing in input")
+
+    workflow = _normalize_workflow(workflow_raw)
+    if not isinstance(workflow, dict) or not workflow:
+        raise ValueError("workflow ist leer oder hat kein gültiges Format (dict erwartet)")
 
     raw_job_id = event.get("id") or event.get("requestId") or inp.get("jobId")
     job_id = _sanitize_job_id(raw_job_id)
