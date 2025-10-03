@@ -1,26 +1,26 @@
 #!/bin/bash
 # =============================================================================
-# Setup-Skript für ComfyUI Serverless Codex-Entwicklungsumgebung
+# Setup Script for ComfyUI Serverless Codex Development Environment
 # =============================================================================
 #
-# Dieses Skript richtet eine vollständige Entwicklungsumgebung ein für:
-# - Lokale Python-Entwicklung
+# This script sets up a complete development environment for:
+# - Local Python Development
 # - ComfyUI Testing
 # - Docker Image Build & Test
 # - RunPod Serverless Deployment
 #
 # =============================================================================
 
-set -e  # Bei Fehler abbrechen
+set -e  # Exit on error
 
-# Farben für Output
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Logging-Funktionen
+# Logging functions
 log_info() {
     echo -e "${BLUE}ℹ️  $1${NC}"
 }
@@ -441,7 +441,7 @@ ignore =
     W503,  # line break before binary operator
 EOF
 
-# pyproject.toml (für black, isort, etc.)
+# pyproject.toml (for black, isort, etc.)
 cat > pyproject.toml << 'EOF'
 [tool.black]
 line-length = 120
@@ -558,7 +558,7 @@ print_header "Creating Codex Configuration"
 cat > .codex/config.json << 'EOF'
 {
   "project": "runpod-comfyui-serverless",
-  "description": "Serverless Handler für ComfyUI auf RunPod Infrastructure",
+  "description": "Serverless Handler for ComfyUI on RunPod Infrastructure",
   "language": "python",
   "version": "3.11+",
   "framework": "runpod-serverless",
@@ -591,16 +591,16 @@ cat > .codex/development.md << 'EOF'
 ## Quick Start
 
 ```bash
-# Setup ausführen
+# Run setup
 ./setup-codex.sh
 
-# Virtual Environment aktivieren
+# Activate Virtual Environment
 source .venv/bin/activate
 
-# Tests ausführen
+# Run tests
 pytest
 
-# Code formatieren
+# Format code
 black rp_handler.py
 
 # Linting
