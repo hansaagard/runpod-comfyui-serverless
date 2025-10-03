@@ -111,6 +111,7 @@ def _get_s3_client():
                 print(f"❌ Bucket '{S3_BUCKET}' existiert nicht!")
             elif error_code == '403':
                 print(f"❌ Keine Berechtigung für Bucket '{S3_BUCKET}'!")
+            raise RuntimeError(f"S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
     return _S3_CLIENT
 
 
