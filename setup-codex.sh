@@ -1,863 +1,184 @@
 #!/bin/bash
-# =============================================================================
-# Setup Script for ComfyUI Serverless Codex Development Environment
-# =============================================================================
 #
-# This script sets up a complete development environment for:
-# - Local Python Development
-# - ComfyUI Testing
-# - Docker Image Build & Test
-# - RunPod Serverless Deployment
+# Codex Setup Script für RunPod Serverless Environment
+# Dieses Skript richtet die Codex-Umgebung für das ComfyUI Serverless Repo ein
 #
-# =============================================================================
 
 set -e  # Exit on error
 
-# Colors for output
-RED='\033[0;31m'
+# Farben für bessere Lesbarkeit
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Logging functions
-log_info() {
+echo_info() {
     echo -e "${BLUE}ℹ️  $1${NC}"
 }
 
-log_success() {
+echo_success() {
     echo -e "${GREEN}✅ $1${NC}"
 }
 
-log_warning() {
+echo_warning() {
     echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
-log_error() {
+echo_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
-print_header() {
-    echo ""
-    echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}  $1${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
-    echo ""
-}
+echo_info "🚀 Starte Codex Umgebungs-Setup für RunPod ComfyUI Serverless..."
 
-# =============================================================================
-# System-Checks
-# =============================================================================
+# ============================================================
+# 1. Workspace-Verzeichnis erstellen
+# ============================================================
+echo_info "📁 Erstelle Workspace-Struktur..."
+mkdir -p /workspace
+cd /workspace
+echo_success "Workspace bereit: $(pwd)"
 
-print_header "System-Checks"
-
-# Python Version Check
-log_info "Checking Python installation..."
-if command -v python3 &> /dev/null; then
-    PYTHON_VERSION=$(python3 --version | awk '{print $2}')
-    log_success "Python $PYTHON_VERSION found"
-    
-    # Version check (minimum 3.11)
-    PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
-    PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
-    
-    if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 11 ]); then
-        log_warning "Python 3.11+ recommended, found: $PYTHON_VERSION"
-    fi
+# ============================================================
+# 2. Repository klonen (falls nicht vorhanden)
+# ============================================================
+if [ ! -d "/workspace/runpod-comfyui-serverless" ]; then
+    echo_info "📦 Klone Repository..."
+    git clone https://github.com/EcomTree/runpod-comfyui-serverless.git
+    cd runpod-comfyui-serverless
+    echo_success "Repository geklont"
 else
-    log_error "Python 3 not found! Please install."
-    exit 1
+    echo_warning "Repository existiert bereits, überspringe Klonen"
+    cd runpod-comfyui-serverless
 fi
 
-# Git Check
-log_info "Checking Git installation..."
-if command -v git &> /dev/null; then
-    GIT_VERSION=$(git --version | awk '{print $3}')
-    log_success "Git $GIT_VERSION found"
+# ============================================================
+# 3. Python Environment Setup
+# ============================================================
+echo_info "🐍 Richte Python-Umgebung ein..."
+
+# Python Version prüfen (sollte bereits 3.12 sein laut Screenshot)
+PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
+echo_info "Python Version: $PYTHON_VERSION"
+
+# Pip upgrade (wichtig für neueste Pakete)
+python3 -m pip install --upgrade pip setuptools wheel
+
+# Python Dependencies für das Projekt installieren
+echo_info "📦 Installiere Python-Abhängigkeiten..."
+python3 -m pip install --no-cache-dir \
+    runpod \
+    requests \
+    boto3 \
+    Pillow \
+    numpy \
+    pathlib
+
+echo_success "Python-Abhängigkeiten installiert"
+
+# ============================================================
+# 4. System-Tools (falls noch nicht vorhanden)
+# ============================================================
+echo_info "🔧 Prüfe System-Tools..."
+
+# jq für JSON-Verarbeitung (nützlich für Debugging)
+if ! command -v jq &> /dev/null; then
+    echo_info "Installiere jq..."
+    apt-get update -qq
+    apt-get install -y jq
+    echo_success "jq installiert"
 else
-    log_error "Git not found! Please install."
-    exit 1
+    echo_success "jq bereits vorhanden"
 fi
 
-# Docker Check (optional)
-log_info "Checking Docker installation..."
-if command -v docker &> /dev/null; then
-    DOCKER_VERSION=$(docker --version | awk '{print $3}' | sed 's/,//')
-    log_success "Docker $DOCKER_VERSION found"
-    DOCKER_AVAILABLE=true
+# curl für API-Tests
+if ! command -v curl &> /dev/null; then
+    echo_info "Installiere curl..."
+    apt-get update -qq
+    apt-get install -y curl
+    echo_success "curl installiert"
 else
-    log_warning "Docker not found - Docker features will be skipped"
-    DOCKER_AVAILABLE=false
+    echo_success "curl bereits vorhanden"
 fi
 
-# Disk Space Check (portable across Linux/macOS/BSD)
-log_info "Checking available disk space..."
-if df -h . > /dev/null 2>&1; then
-    # Use -h for human-readable, extract value portably
-    AVAILABLE_SPACE_RAW=$(df -h . | tail -1 | awk '{print $4}')
-    
-    # Extract numeric value and unit (e.g., 9.8G, 512M, 1.2T)
-    AVAILABLE_SPACE_NUM=$(echo "$AVAILABLE_SPACE_RAW" | grep -oE '^[0-9]+(\.[0-9]+)?' || echo "0")
-    AVAILABLE_SPACE_UNIT=$(echo "$AVAILABLE_SPACE_RAW" | grep -oE '[KMGTP]' || echo "")
-    
-    # Convert to GB for comparison
-    case "$AVAILABLE_SPACE_UNIT" in
-        P) AVAILABLE_SPACE_GB=$(awk "BEGIN {printf \"%.0f\", $AVAILABLE_SPACE_NUM * 1024 * 1024}") ;;
-        T) AVAILABLE_SPACE_GB=$(awk "BEGIN {printf \"%.0f\", $AVAILABLE_SPACE_NUM * 1024}") ;;
-        G) AVAILABLE_SPACE_GB=$(awk "BEGIN {printf \"%.0f\", $AVAILABLE_SPACE_NUM}") ;;
-        M) AVAILABLE_SPACE_GB=$(awk "BEGIN {printf \"%.0f\", $AVAILABLE_SPACE_NUM / 1024}") ;;
-        K) AVAILABLE_SPACE_GB=0 ;; # Less than 1MB, treat as 0GB
-        *) AVAILABLE_SPACE_GB=0 ;; # Unknown unit or no unit
-    esac
-    
-    # Only warn if we got a numeric value
-    if [[ "$AVAILABLE_SPACE_GB" =~ ^[0-9]+$ ]] && [ "$AVAILABLE_SPACE_GB" -gt 0 ]; then
-        if [ "$AVAILABLE_SPACE_GB" -lt 10 ]; then
-            log_warning "Low disk space available: ${AVAILABLE_SPACE_GB}GB (minimum 10GB recommended)"
-        else
-            log_success "Available disk space: ${AVAILABLE_SPACE_GB}GB"
-        fi
-    else
-        log_info "Available disk space: $AVAILABLE_SPACE_RAW"
-    fi
-else
-    log_warning "Could not check disk space"
-fi
-
-# =============================================================================
-# Check for non-interactive mode
-# =============================================================================
-
-# Detect if running in CI/CD or non-interactive environment
-if [[ ! -t 0 ]] || [[ -n "$CI" ]] || [[ -n "$DEBIAN_FRONTEND" ]]; then
-    NON_INTERACTIVE=true
-    log_info "Non-interactive mode detected"
-else
-    NON_INTERACTIVE=false
-fi
-
-# =============================================================================
-# Directory Structure
-# =============================================================================
-
-print_header "Creating Directory Structure"
-
-WORKSPACE_ROOT=$(pwd)
-log_info "Workspace Root: $WORKSPACE_ROOT"
-
-# Create development directories
-mkdir -p .venv
-mkdir -p logs
-mkdir -p tests
-mkdir -p .codex
-mkdir -p tmp/comfy-output
-
-log_success "Directory structure created"
-
-# =============================================================================
-# Python Virtual Environment
-# =============================================================================
-
-print_header "Setting up Python Virtual Environment"
-
-# Check if venv already exists
-if [ -d ".venv/bin" ]; then
-    log_warning "Virtual Environment already exists"
-    
-    if [ "$NON_INTERACTIVE" = true ]; then
-        log_info "Using existing Virtual Environment (non-interactive mode)"
-    else
-        read -p "Recreate? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Removing old Virtual Environment..."
-            rm -rf .venv
-        else
-            log_info "Using existing Virtual Environment"
-        fi
-    fi
-fi
-
-if [ ! -d ".venv/bin" ]; then
-    log_info "Creating Virtual Environment..."
-    python3 -m venv .venv
-    log_success "Virtual Environment created"
-fi
-
-# Activate venv
-log_info "Activating Virtual Environment..."
-source .venv/bin/activate
-log_success "Virtual Environment activated"
-
-# Upgrade pip
-log_info "Upgrading pip, setuptools, wheel..."
-pip install --upgrade pip setuptools wheel --quiet
-log_success "pip updated"
-
-# =============================================================================
-# Python Dependencies
-# =============================================================================
-
-print_header "Installing Python Dependencies"
-
-log_info "Creating requirements-dev.txt..."
-cat > requirements-dev.txt << 'EOF'
-# Core Dependencies (as in Dockerfile)
-requests>=2.31.0
-runpod>=1.6.0
-
-# Development Tools
-pytest>=7.4.0
-pytest-cov>=4.1.0
-pytest-mock>=3.11.1
-black>=23.7.0
-flake8>=6.1.0
-mypy>=1.5.0
-ipython>=8.14.0
-ipdb>=0.13.13
-
-# Type stubs
-types-requests
-
-# Linting & Formatting
-isort>=5.12.0
-pylint>=2.17.5
-
-# Testing & Mocking
-responses>=0.23.3
-faker>=19.3.0
-
-# Documentation
-sphinx>=7.1.2
-sphinx-rtd-theme>=1.3.0
-
-# Jupyter (optional, for interactive development)
-jupyter>=1.0.0
-notebook>=7.0.0
-EOF
-
-log_success "requirements-dev.txt created"
-
-log_info "Installing dependencies..."
-log_warning "This may take several minutes..."
-
-pip install -r requirements-dev.txt --quiet
-
-log_success "Dependencies installed"
-
-# =============================================================================
-# ComfyUI for local testing (optional)
-# =============================================================================
-
-print_header "ComfyUI Setup for Local Testing"
-
-if [ "$NON_INTERACTIVE" = true ]; then
-    log_info "Skipping ComfyUI setup in non-interactive mode"
-    log_info "Run setup again interactively to install ComfyUI"
-else
-    log_info "ComfyUI is needed for local testing"
-    read -p "Clone ComfyUI now? (Y/n): " -n 1 -r
-    echo
-
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        if [ -d "ComfyUI" ]; then
-            log_warning "ComfyUI directory already exists"
-        else
-            log_info "Cloning ComfyUI repository..."
-            git clone https://github.com/comfyanonymous/ComfyUI.git
-            
-            cd ComfyUI
-            log_info "Checking out version v0.3.57 (as in Dockerfile)..."
-            git checkout v0.3.57
-            
-            log_info "Installing ComfyUI dependencies..."
-            # Install only Python packages, no Torch packages reinstallation
-            pip install -r requirements.txt --quiet || log_warning "Some ComfyUI dependencies could not be installed"
-            
-            cd "$WORKSPACE_ROOT"
-            log_success "ComfyUI set up"
-            
-            # Create model directories
-            mkdir -p ComfyUI/models/checkpoints
-            mkdir -p ComfyUI/models/vae
-            mkdir -p ComfyUI/models/loras
-            mkdir -p ComfyUI/output
-            
-            log_info "Model directories created"
-            log_warning "Note: Models must be downloaded manually"
-            log_info "Example: wget -P ComfyUI/models/checkpoints/ <model-url>"
-        fi
-    else
-        log_info "ComfyUI setup skipped"
-    fi
-fi
-
-# =============================================================================
-# Test Setup
-# =============================================================================
-
-print_header "Configuring Test Setup"
-
-log_info "Creating test structure..."
-
-mkdir -p tests/unit
-mkdir -p tests/integration
-mkdir -p tests/fixtures
-
-# pytest.ini
-cat > pytest.ini << 'EOF'
-[pytest]
-testpaths = tests
-python_files = test_*.py
-python_classes = Test*
-python_functions = test_*
-addopts = 
-    -v
-    --tb=short
-    --strict-markers
-    --cov=.
-    --cov-report=term-missing
-    --cov-report=html
-markers =
-    unit: Unit tests
-    integration: Integration tests
-    slow: Slow running tests
-EOF
-
-log_success "pytest.ini created"
-
-# Example Unit Test
-cat > tests/unit/test_handler.py << 'EOF'
-"""Unit tests for rp_handler.py"""
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-import sys
-import os
-
-# Add workspace to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
-import rp_handler
-
-
-class TestVolumeFunctions:
-    """Tests for volume management functions"""
-    
-    def test_sanitize_job_id_valid(self):
-        """Test sanitize_job_id with valid input"""
-        result = rp_handler._sanitize_job_id("test-job-123")
-        assert result == "test-job-123"
-    
-    def test_sanitize_job_id_invalid_chars(self):
-        """Test sanitize_job_id with invalid characters"""
-        result = rp_handler._sanitize_job_id("test/job@123!")
-        assert result == "test_job_123"
-    
-    def test_sanitize_job_id_none(self):
-        """Test sanitize_job_id with None"""
-        result = rp_handler._sanitize_job_id(None)
-        assert result is None
-
-
-class TestComfyFunctions:
-    """Tests for ComfyUI interaction"""
-    
-    @patch('rp_handler.requests.get')
-    def test_is_comfy_running_success(self, mock_get):
-        """Test _is_comfy_running when ComfyUI is running"""
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_get.return_value = mock_response
-        
-        result = rp_handler._is_comfy_running()
-        assert result is True
-    
-    @patch('rp_handler.requests.get')
-    def test_is_comfy_running_failure(self, mock_get):
-        """Test _is_comfy_running when ComfyUI is not running"""
-        mock_get.side_effect = Exception("Connection failed")
-        
-        result = rp_handler._is_comfy_running()
-        assert result is False
-
-
-class TestHandler:
-    """Tests for main handler"""
-    
-    def test_handler_missing_workflow(self):
-        """Test handler without workflow input"""
-        event = {"input": {}}
-        
-        with pytest.raises(ValueError, match="workflow fehlt"):
-            rp_handler.handler(event)
-    
-    @patch('rp_handler._start_comfy')
-    @patch('rp_handler._ensure_volume_ready')
-    @patch('rp_handler._run_workflow')
-    @patch('rp_handler._wait_for_completion')
-    def test_handler_basic_flow(self, mock_wait, mock_run, mock_volume, mock_start):
-        """Test basic handler flow"""
-        # Setup mocks
-        mock_volume.return_value = True
-        mock_run.return_value = "test-prompt-id"
-        mock_wait.return_value = {"outputs": {}}
-        
-        event = {
-            "id": "test-job-123",
-            "input": {
-                "workflow": {"test": "workflow"}
-            }
-        }
-        
-        result = rp_handler.handler(event)
-        
-        assert "links" in result
-        assert "total_images" in result
-        assert "job_id" in result
-        assert result["job_id"] == "test-job-123"
-EOF
-
-log_success "Example tests created"
-
-# =============================================================================
-# Development Tools Config
-# =============================================================================
-
-print_header "Configuring Development Tools"
-
-# .flake8
-cat > .flake8 << 'EOF'
-[flake8]
-max-line-length = 120
-exclude = 
-    .git,
-    __pycache__,
-    .venv,
-    ComfyUI,
-    build,
-    dist
-ignore = 
-    E203,  # whitespace before ':'
-    W503,  # line break before binary operator
-EOF
-
-# pyproject.toml (for black, isort, etc.)
-cat > pyproject.toml << 'EOF'
-[tool.black]
-line-length = 120
-target-version = ['py311']
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.venv
-  | ComfyUI
-  | build
-  | dist
-)/
-'''
-
-[tool.isort]
-profile = "black"
-line_length = 120
-skip = [".venv", "ComfyUI"]
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-exclude = ['ComfyUI', '.venv']
-EOF
-
-log_success "Tool configurations created"
-
-# =============================================================================
-# Docker Helper Scripts
-# =============================================================================
-
-if [ "$DOCKER_AVAILABLE" = true ]; then
-    print_header "Creating Docker Helper Scripts"
-    
-    # build-docker.sh
-    cat > build-docker.sh << 'EOF'
-#!/bin/bash
-# Docker Image Build Script
-
-set -e
-
-IMAGE_NAME="${IMAGE_NAME:-ecomtree/comfyui-serverless}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-
-echo "🐳 Building Docker Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-echo ""
-
-docker build \
-    -t "${IMAGE_NAME}:${IMAGE_TAG}" \
-    -f Serverless.Dockerfile \
-    .
-
-echo ""
-echo "✅ Build successful!"
-echo ""
-echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-echo ""
-echo "Next steps:"
-echo "  - Test: docker run -it ${IMAGE_NAME}:${IMAGE_TAG} bash"
-echo "  - Push: docker push ${IMAGE_NAME}:${IMAGE_TAG}"
-EOF
-    chmod +x build-docker.sh
-    
-    # test-docker-local.sh
-    cat > test-docker-local.sh << 'EOF'
-#!/bin/bash
-# Local Docker Test
-
-set -e
-
-IMAGE_NAME="${IMAGE_NAME:-ecomtree/comfyui-serverless}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-
-echo "🧪 Testing Docker Image locally: ${IMAGE_NAME}:${IMAGE_TAG}"
-echo ""
-
-# Create test volume
-mkdir -p tmp/test-volume
-
-# Test if image exists
-if ! docker image inspect "${IMAGE_NAME}:${IMAGE_TAG}" > /dev/null 2>&1; then
-    echo "❌ Image not found: ${IMAGE_NAME}:${IMAGE_TAG}"
-    echo "Please build first: ./build-docker.sh"
-    exit 1
-fi
-
-echo "🚀 Starting container in interactive mode..."
-echo ""
-
-docker run -it --rm \
-    --gpus all \
-    -v "$(pwd)/tmp/test-volume:/runpod-volume" \
-    -e COMFY_PORT=8188 \
-    -e RUNPOD_VOLUME_PATH=/runpod-volume \
-    -p 8188:8188 \
-    "${IMAGE_NAME}:${IMAGE_TAG}" \
-    bash
-EOF
-    chmod +x test-docker-local.sh
-    
-    log_success "Docker scripts created"
-fi
-
-# =============================================================================
-# Codex Configuration
-# =============================================================================
-
-print_header "Creating Codex Configuration"
-
-# .codex/config.json
-cat > .codex/config.json << 'EOF'
-{
-  "project": "runpod-comfyui-serverless",
-  "description": "Serverless Handler for ComfyUI on RunPod Infrastructure",
-  "language": "python",
-  "version": "3.11+",
-  "framework": "runpod-serverless",
-  "paths": {
-    "handler": "rp_handler.py",
-    "tests": "tests/",
-    "docker": "Serverless.Dockerfile",
-    "logs": "logs/"
-  },
-  "commands": {
-    "test": "pytest",
-    "lint": "flake8 rp_handler.py",
-    "format": "black rp_handler.py",
-    "type-check": "mypy rp_handler.py",
-    "docker-build": "./build-docker.sh",
-    "docker-test": "./test-docker-local.sh"
-  },
-  "env_vars": {
-    "COMFY_PORT": "8188",
-    "COMFY_HOST": "127.0.0.1",
-    "RUNPOD_VOLUME_PATH": "/runpod-volume"
-  }
-}
-EOF
-
-# .codex/development.md
-cat > .codex/development.md << 'EOF'
-# Development Guide
-
-## Quick Start
-
-```bash
-# Run setup
-./setup-codex.sh
-
-# Activate Virtual Environment
-source .venv/bin/activate
-
-# Run tests
-pytest
-
-# Format code
-black rp_handler.py
-
-# Linting
-flake8 rp_handler.py
-```
-
-## Projekt-Struktur
-
-```
-.
-├── rp_handler.py           # Haupt-Handler
-├── Serverless.Dockerfile   # Docker Image
-├── tests/                  # Test Suite
-│   ├── unit/              # Unit Tests
-│   └── integration/       # Integration Tests
-├── .codex/                # Codex Konfiguration
-├── logs/                  # Log Files
-└── tmp/                   # Temporäre Dateien
-```
-
-## Lokale Entwicklung
-
-### ComfyUI lokal starten
-
-```bash
-cd ComfyUI
-python main.py --listen 127.0.0.1 --port 8188
-```
-
-### Handler testen
-
-```python
-from rp_handler import handler
-
-event = {
-    "input": {
-        "workflow": {
-            # Dein ComfyUI Workflow
-        }
-    }
-}
-
-result = handler(event)
-```
-
-## Docker Development
-
-### Image bauen
-```bash
-./build-docker.sh
-```
-
-### Lokal testen
-```bash
-./test-docker-local.sh
-```
-
-## Testing
-
-### Alle Tests
-```bash
-pytest
-```
-
-### Nur Unit Tests
-```bash
-pytest -m unit
-```
-
-### Mit Coverage
-```bash
-pytest --cov=. --cov-report=html
-```
-
-## Code Quality
-
-### Formatierung
-```bash
-black rp_handler.py
-isort rp_handler.py
-```
-
-### Linting
-```bash
-flake8 rp_handler.py
-pylint rp_handler.py
-```
-
-### Type Checking
-```bash
-mypy rp_handler.py
-```
-
-## Deployment
-
-1. Image bauen: `./build-docker.sh`
-2. Image pushen: `docker push ecomtree/comfyui-serverless:latest`
-3. RunPod Endpoint konfigurieren
-4. Mit test_endpoint.sh testen
-EOF
-
-log_success "Codex documentation created"
-
-# =============================================================================
-# Environment File
-# =============================================================================
-
-print_header "Environment Setup"
-
-cat > .env.example << 'EOF'
-# RunPod Configuration
-RUNPOD_API_KEY=your-api-key-here
-RUNPOD_ENDPOINT_ID=your-endpoint-id-here
-
-# ComfyUI Configuration
+# ============================================================
+# 5. Umgebungsvariablen Setup
+# ============================================================
+echo_info "🌍 Konfiguriere Umgebungsvariablen..."
+
+# Erstelle .env Template falls nicht vorhanden
+if [ ! -f ".env.example" ]; then
+    cat > .env.example << 'EOF'
+# ComfyUI Konfiguration
 COMFY_PORT=8188
 COMFY_HOST=127.0.0.1
 
-# Storage Configuration
+# Storage Konfiguration - S3 (Empfohlen)
+S3_BUCKET=
+S3_ACCESS_KEY=
+S3_SECRET_KEY=
+S3_ENDPOINT_URL=
+S3_REGION=auto
+S3_PUBLIC_URL=
+S3_SIGNED_URL_EXPIRY=3600
+
+# Network Volume (Fallback)
 RUNPOD_VOLUME_PATH=/runpod-volume
-RUNPOD_OUTPUT_DIR=/runpod-volume
-
-# Docker Configuration
-IMAGE_NAME=ecomtree/comfyui-serverless
-IMAGE_TAG=latest
-
-# Development
-DEBUG=false
-LOG_LEVEL=INFO
+RUNPOD_OUTPUT_DIR=
 EOF
-
-if [ ! -f ".env" ]; then
-    cp .env.example .env
-    log_success ".env file created (please customize!)"
-else
-    log_warning ".env already exists"
+    echo_success ".env.example erstellt"
 fi
 
-# =============================================================================
-# .gitignore Update
-# =============================================================================
+# ============================================================
+# 6. Verzeichnisstruktur für Outputs
+# ============================================================
+echo_info "📂 Erstelle Output-Verzeichnisse..."
+mkdir -p /workspace/outputs
+mkdir -p /workspace/logs
+mkdir -p /runpod-volume || echo_warning "Network Volume nicht verfügbar (normal in Codex)"
+echo_success "Verzeichnisstruktur erstellt"
 
-print_header "Updating .gitignore"
+# ============================================================
+# 7. Test-Skript vorbereiten
+# ============================================================
+echo_info "🧪 Bereite Test-Umgebung vor..."
 
-# Check if gitignore entries already exist to prevent duplicates
-if ! grep -q "# Codex Development" .gitignore 2>/dev/null; then
-    cat >> .gitignore << 'EOF'
-
-# Codex Development
-.venv/
-.vscode/
-.idea/
-*.pyc
-__pycache__/
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-.env
-logs/
-tmp/
-ComfyUI/
-requirements-dev.txt
-build/
-dist/
-*.egg-info/
-EOF
-    log_success ".gitignore updated"
-else
-    log_info ".gitignore already contains Codex Development entries"
+# Mache test_endpoint.sh ausführbar
+if [ -f "test_endpoint.sh" ]; then
+    chmod +x test_endpoint.sh
+    echo_success "Test-Skript ausführbar gemacht"
 fi
 
-# =============================================================================
-# Quick Start Script
-# =============================================================================
+# ============================================================
+# 8. Git Konfiguration (für Codex)
+# ============================================================
+echo_info "🔧 Konfiguriere Git..."
+git config --global user.email "codex@ecomtree.dev" || true
+git config --global user.name "Codex Environment" || true
+git config --global init.defaultBranch main || true
+echo_success "Git konfiguriert"
 
-print_header "Creating Quick-Start Script"
-
-cat > start-dev.sh << 'EOF'
-#!/bin/bash
-# Quick Start for Development
-
-set -e
-
-# Activate venv
-source .venv/bin/activate
-
-echo "✅ Virtual Environment activated"
+# ============================================================
+# 9. Validierung & Zusammenfassung
+# ============================================================
 echo ""
-echo "📋 Available commands:"
-echo "  pytest              - Run tests"
-echo "  black rp_handler.py - Format code"
-echo "  flake8 rp_handler.py - Lint code"
-echo "  ./build-docker.sh   - Build Docker image"
+echo_success "✨ Setup erfolgreich abgeschlossen!"
 echo ""
-echo "📚 Documentation: .codex/development.md"
+echo_info "📋 Zusammenfassung der installierten Komponenten:"
+echo "   ├─ Python: $(python3 --version | awk '{print $2}')"
+echo "   ├─ pip: $(pip3 --version | awk '{print $2}')"
+echo "   ├─ Node.js: $(node --version 2>/dev/null || echo 'nicht verfügbar')"
+echo "   ├─ jq: $(jq --version 2>/dev/null || echo 'nicht verfügbar')"
+echo "   ├─ curl: $(curl --version | head -n1 | awk '{print $2}')"
+echo "   └─ git: $(git --version | awk '{print $3}')"
 echo ""
-
-# Open shell
-exec bash
-EOF
-chmod +x start-dev.sh
-
-log_success "start-dev.sh created"
-
-# =============================================================================
-# Verify Installation
-# =============================================================================
-
-print_header "Verifying Test Installation"
-
-log_info "Running tests..."
-if pytest tests/ -v; then
-    log_success "All tests passed!"
-else
-    log_warning "Some tests failed (expected for mocks)"
-fi
-
-# =============================================================================
-# Completion
-# =============================================================================
-
-print_header "Setup Complete!"
-
+echo_info "📁 Workspace: $(pwd)"
+echo_info "📂 Logs: /workspace/logs"
+echo_info "📂 Outputs: /workspace/outputs"
 echo ""
-log_success "🎉 Codex development environment is ready!"
+echo_info "📝 Nächste Schritte:"
+echo "   1. Kopiere .env.example zu .env und fülle die Werte aus"
+echo "   2. Teste den Handler mit: python3 rp_handler.py (lokal)"
+echo "   3. Oder baue das Docker Image: docker build -f Serverless.Dockerfile ."
 echo ""
-echo "📁 Created files:"
-echo "   ├── .venv/                    Python Virtual Environment"
-echo "   ├── requirements-dev.txt      Development Dependencies"
-echo "   ├── pytest.ini                Test Configuration"
-echo "   ├── pyproject.toml            Tool Configuration"
-echo "   ├── .env.example              Environment Template"
-echo "   ├── tests/                    Test Suite"
-echo "   ├── .codex/                   Codex Configuration"
-echo "   ├── build-docker.sh           Docker Build Script"
-echo "   ├── test-docker-local.sh      Docker Test Script"
-echo "   └── start-dev.sh              Quick Start Script"
-echo ""
-echo "🚀 Next steps:"
-echo ""
-echo "1. Activate Virtual Environment:"
-echo "   source .venv/bin/activate"
-echo ""
-echo "2. Or use Quick-Start:"
-echo "   ./start-dev.sh"
-echo ""
-echo "3. Customize .env file:"
-echo "   nano .env"
-echo ""
-echo "4. Run tests:"
-echo "   pytest"
-echo ""
-echo "5. Build Docker image (optional):"
-echo "   ./build-docker.sh"
-echo ""
-echo "📚 More info: .codex/development.md"
-echo ""
-log_success "Happy Coding! 🚀"
-echo ""
+echo_success "🎉 Codex Environment ist bereit!"
