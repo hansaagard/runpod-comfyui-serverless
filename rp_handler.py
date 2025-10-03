@@ -58,12 +58,12 @@ class S3ClientManager:
                 print(f"✅ S3 Bucket '{S3_BUCKET}' ist erreichbar")
             except ClientError as e:
                 error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-                print(f"⚠️ S3 Bucket Check fehlgeschlagen: {error_code} - {e}")
                 if error_code == '404':
                     print(f"❌ Bucket '{S3_BUCKET}' existiert nicht!")
                 elif error_code == '403':
                     print(f"❌ Keine Berechtigung für Bucket '{S3_BUCKET}'!")
-                print(f"❌ S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
+                else:
+                    print(f"❌ S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
                 self._client = None  # Reset client to prevent usage
                 raise RuntimeError(f"S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
         return self._client
@@ -137,24 +137,18 @@ def _get_s3_client():
 
 def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     """
-    Upload a file to the configured S3 bucket and return a public or signed URL.
+    Upload a file to S3 and return a public or signed URL.
 
-    Parameters:
-        file_path (Path): The path to the file to upload.
-        job_id (Optional[str]): An optional job identifier. If provided, it is used as a prefix in the S3 object key.
+    Args:
+        file_path: The path to the file to upload.
+        job_id: Optional job identifier used as prefix in the S3 object key.
 
     Returns:
-        str: The public or signed URL to access the uploaded file.
+        The public or signed URL to access the uploaded file.
 
     Raises:
         RuntimeError: If S3 upload is not configured or the S3 client cannot be initialized.
-        botocore.exceptions.ClientError: If the upload to S3 fails.
-
-    S3 Key Generation Strategy:
-        The S3 object key is generated as follows:
-            - If job_id is provided: "{job_id}/{timestamp}_{filename}"
-            - If job_id is not provided: "{timestamp}_{filename}"
-        where 'timestamp' is the current date and time in "YYYYMMDD_HHMMSS" format, and 'filename' is the name of the file.
+        ClientError: If the upload to S3 fails.
     """
     if not S3_UPLOAD_ENABLED:
         raise RuntimeError("S3 Upload ist nicht konfiguriert. Bitte S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY setzen.")
@@ -164,6 +158,8 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
         raise RuntimeError("S3 Client konnte nicht initialisiert werden")
     
     # S3 Key generieren (Pfad im Bucket)
+    # Strategy: {job_id}/{timestamp}_{filename} wenn job_id vorhanden, sonst {timestamp}_{filename}
+    # timestamp format: YYYYMMDD_HHMMSS (UTC)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     if job_id:
         s3_key = f"{job_id}/{timestamp}_{file_path.name}"
@@ -491,6 +487,7 @@ def handler(event):
                                     network_file_path = _save_to_network_volume(img_path, job_id=job_id)
                                     links.append(network_file_path)
                                     local_paths.append(str(img_path))
+                                    print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
                                 else:
                                     raise RuntimeError(f"Weder S3 noch Volume verfügbar! {e}")
                         else:
@@ -515,11 +512,13 @@ def handler(event):
                         s3_url = _upload_to_s3(img_file, job_id=job_id)
                         links.append(s3_url)
                     except Exception as e:
-                        print(f"❌ S3 Upload fehlgeschlagen für {img_file}: {e}. Fallback auf Network Volume.")
+                        print(f"❌ S3 Upload fehlgeschlagen für {img_file}: {e}")
                         if _volume_ready():
+                            print(f"⚠️ Fallback: Speichere auf Network Volume...")
                             network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                             links.append(network_file_path)
                             local_paths.append(network_file_path)
+                            print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
                         else:
                             print(f"❌ Weder S3 noch Volume verfügbar für {img_file}")
                 else:
