@@ -276,11 +276,34 @@ def _start_comfy():
     raise RuntimeError("ComfyUI could not be started.")
 
 
+def _workflow_has_nodes(workflow_dict: dict) -> bool:
+    """Return True when dict looks like a ComfyUI workflow (nodes with class_type)."""
+    if not isinstance(workflow_dict, dict):
+        return False
+    for node in workflow_dict.values():
+        if isinstance(node, dict) and node.get("class_type"):
+            return True
+    return False
+
+
 def _normalize_workflow(workflow_input):
     """Accept workflow input in multiple formats and always return a dict."""
-    # Already a dict – nothing to do.
+    # Already a dict – ensure it contains actual Comfy nodes.
     if isinstance(workflow_input, dict):
-        return workflow_input
+        if _workflow_has_nodes(workflow_input):
+            return workflow_input
+
+        # Detect wrapper structures such as {"id": "...", "input": {...}}
+        wrapper_keys = ("workflow", "prompt", "input", "data")
+        for key in wrapper_keys:
+            if key in workflow_input:
+                candidate = _normalize_workflow(workflow_input[key])
+                if isinstance(candidate, dict) and _workflow_has_nodes(candidate):
+                    return candidate
+
+        raise ValueError(
+            "workflow dict enthält keine gültigen Nodes mit class_type – erwartet ComfyUI Workflow"
+        )
 
     # Stringified JSON – attempt to decode recursively.
     if isinstance(workflow_input, str):
