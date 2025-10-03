@@ -16,17 +16,17 @@ from botocore.exceptions import ClientError
 
 COMFY_PORT = int(os.getenv("COMFY_PORT", 8188))
 COMFY_HOST = os.getenv("COMFY_HOST", "127.0.0.1")
-COMFY_URL = f"http://{COMFY_HOST}:{COMFY_PORT}"  # Base URL für ComfyUI API
+COMFY_URL = f"http://{COMFY_HOST}:{COMFY_PORT}"  # Base URL for ComfyUI API
 OUTPUT_BASE = Path(os.getenv("RUNPOD_OUTPUT_DIR", os.getenv("RUNPOD_VOLUME_PATH", "/runpod-volume")))
 
 # S3 Configuration
 S3_BUCKET = os.getenv("S3_BUCKET")
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
-S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")  # Für R2/Backblaze etc.
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")  # For R2/Backblaze etc.
 S3_REGION = os.getenv("S3_REGION", "auto")
-S3_PUBLIC_URL = os.getenv("S3_PUBLIC_URL")  # Optional: Custom public URL (z.B. CDN)
-S3_SIGNED_URL_EXPIRY = int(os.getenv("S3_SIGNED_URL_EXPIRY", 3600))  # Sekunden (default: 1h)
+S3_PUBLIC_URL = os.getenv("S3_PUBLIC_URL")  # Optional: Custom public URL (e.g. CDN)
+S3_SIGNED_URL_EXPIRY = int(os.getenv("S3_SIGNED_URL_EXPIRY", 3600))  # Seconds (default: 1h)
 S3_UPLOAD_ENABLED = bool(S3_BUCKET and S3_ACCESS_KEY and S3_SECRET_KEY)
 
 _VOLUME_READY = False
@@ -52,7 +52,7 @@ class S3ClientManager:
             with self._lock:
                 # Double-checked locking for thread safety
                 if self._client is None:
-                    print(f"🔧 Initialisiere S3 Client (Region: {S3_REGION})")
+                    print(f"🔧 Initializing S3 Client (Region: {S3_REGION})")
                     self._client = boto3.client(
                         's3',
                         aws_access_key_id=S3_ACCESS_KEY,
@@ -63,17 +63,17 @@ class S3ClientManager:
                     # Test connection
                     try:
                         self._client.head_bucket(Bucket=S3_BUCKET)
-                        print(f"✅ S3 Bucket ist erreichbar")
+                        print(f"✅ S3 Bucket is accessible")
                     except ClientError as e:
                         error_code = e.response.get('Error', {}).get('Code', 'Unknown')
                         # Log detailed error internally but don't expose sensitive info
-                        print(f"❌ S3 Bucket-Zugriff fehlgeschlagen: {error_code}")
+                        print(f"❌ S3 Bucket access failed: {error_code}")
                         if error_code == '404':
-                            print(f"❌ Bucket existiert nicht!")
+                            print(f"❌ Bucket does not exist!")
                         elif error_code == '403':
-                            print(f"❌ Keine Berechtigung für den Bucket!")
+                            print(f"❌ No permission for bucket!")
                         self._client = None  # Reset client to prevent usage
-                        raise RuntimeError("S3 Storage ist nicht verfügbar. Bitte überprüfen Sie die Konfiguration.")
+                        raise RuntimeError("S3 Storage is not available. Please check configuration.")
         return self._client
     
     def reset_client(self):
@@ -153,16 +153,16 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
         ClientError: If the upload to S3 fails.
     """
     if not S3_UPLOAD_ENABLED:
-        raise RuntimeError("S3 Upload ist nicht konfiguriert. Bitte S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY setzen.")
+        raise RuntimeError("S3 Upload is not configured. Please set S3_BUCKET, S3_ACCESS_KEY and S3_SECRET_KEY.")
     
     s3_client = S3ClientManager().get_client()
     if not s3_client:
-        raise RuntimeError("S3 Client konnte nicht initialisiert werden")
+        raise RuntimeError("S3 Client could not be initialized")
     
-    # S3 Key generieren (Pfad im Bucket)
-    # Strategy: {job_id}/{timestamp}_{unique_id}_{filename} wenn job_id vorhanden, sonst {timestamp}_{unique_id}_{filename}
-    # timestamp format: YYYYMMDD_HHMMSS_ffffff (UTC with 6-digit microseconds, zero-padded)
-    # unique_id: 8-char hex to prevent collisions in high-concurrency scenarios
+    # S3 Key generation strategy:
+    # - Format: {job_id}/{timestamp}_{unique_id}_{filename} if job_id present, else {timestamp}_{unique_id}_{filename}
+    # - timestamp: YYYYMMDD_HHMMSS_ffffff (UTC with microseconds, %f always produces 6 digits)
+    # - unique_id: 8-char hex UUID to prevent collisions in high-concurrency scenarios
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     unique_id = uuid.uuid4().hex[:8]
     if job_id:
@@ -170,9 +170,9 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     else:
         s3_key = f"{timestamp}_{unique_id}_{file_path.name}"
     
-    print(f"☁️ Uploading {file_path.name} zu S3: s3://{S3_BUCKET}/{s3_key}")
+    print(f"☁️ Uploading {file_path.name} to S3: s3://{S3_BUCKET}/{s3_key}")
     
-    # Content-Type bestimmen
+    # Determine Content-Type
     content_type = "image/png"
     if file_path.suffix.lower() == ".jpg" or file_path.suffix.lower() == ".jpeg":
         content_type = "image/jpeg"
@@ -197,30 +197,30 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
         )
         
         file_size = file_path.stat().st_size
-        print(f"✅ Upload erfolgreich! ({file_size} bytes)")
+        print(f"✅ Upload successful! ({file_size} bytes)")
         
-        # URL generieren
+        # Generate URL
         if S3_PUBLIC_URL:
-            # Custom public URL (z.B. CDN)
+            # Custom public URL (e.g. CDN)
             url = f"{S3_PUBLIC_URL.rstrip('/')}/{s3_key}"
             print(f"🌐 Public URL: {url}")
         else:
-            # Signed URL generieren
+            # Generate signed URL
             url = s3_client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': S3_BUCKET, 'Key': s3_key},
                 ExpiresIn=S3_SIGNED_URL_EXPIRY
             )
             expiry_minutes = S3_SIGNED_URL_EXPIRY // 60
-            print(f"🔐 Signed URL generiert (gültig für {expiry_minutes} Minuten)")
+            print(f"🔐 Signed URL generated (valid for {expiry_minutes} minutes)")
         
         return url
         
     except ClientError as e:
-        print(f"❌ S3 Upload fehlgeschlagen: {e}")
+        print(f"❌ S3 Upload failed: {e}")
         raise
     except Exception as e:
-        print(f"❌ Unerwarteter Fehler beim S3 Upload: {e}")
+        print(f"❌ Unexpected error during S3 upload: {e}")
         raise
 
 
@@ -231,11 +231,11 @@ def _sanitize_job_id(job_id: Optional[str]) -> Optional[str]:
     return sanitized.strip("._") or None
 
 # ----------------------------------------------------------------------------
-# Helferfunktionen
+# Helper Functions
 # ----------------------------------------------------------------------------
 
 def _is_comfy_running() -> bool:
-    """Prüfen, ob ComfyUI auf dem vorgesehenen Port reagiert."""
+    """Check if ComfyUI responds on the designated port."""
     try:
         r = requests.get(f"{COMFY_URL}/system_stats", timeout=2)
         return r.status_code == 200
@@ -244,82 +244,82 @@ def _is_comfy_running() -> bool:
 
 
 def _start_comfy():
-    """ComfyUI im Hintergrund starten, falls noch nicht läuft."""
+    """Start ComfyUI in background if not already running."""
     if _is_comfy_running():
-        print("✅ ComfyUI läuft bereits.")
+        print("✅ ComfyUI is already running.")
         return
 
-    print("🚀 Starte ComfyUI im Hintergrund…")
+    print("🚀 Starting ComfyUI in background…")
     log_path = "/workspace/comfy.log"
     
-    # Weniger aggressive Memory-Parameter für Container-Umgebung
+    # Less aggressive memory parameters for container environment
     cmd = [
         "python", "/workspace/ComfyUI/main.py",
         "--listen", COMFY_HOST,
         "--port", str(COMFY_PORT),
-        "--normalvram",  # Statt --highvram für bessere Container-Kompatibilität
+        "--normalvram",  # Instead of --highvram for better container compatibility
         "--preview-method", "auto",
-        "--verbose",  # Für Debug-Logs
+        "--verbose",  # For debug logs
     ]
     
-    print(f"🎯 ComfyUI Start-Command: {' '.join(cmd)}")
+    print(f"🎯 ComfyUI Start Command: {' '.join(cmd)}")
     
     with open(log_path, "a") as log_file:
         subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT, cwd="/workspace/ComfyUI")
 
-    # Warten bis API erreichbar
+    # Wait until API is reachable
     for _ in range(30):
         if _is_comfy_running():
-            print("✅ ComfyUI läuft.")
+            print("✅ ComfyUI is running.")
             return
         time.sleep(2)
-    raise RuntimeError("ComfyUI konnte nicht gestartet werden.")
+    raise RuntimeError("ComfyUI could not be started.")
 
 
 def _run_workflow(workflow: dict):
-    """Workflow an Comfy senden und auf Ergebnis warten."""
-    # ComfyUI API erwartet {"prompt": workflow, "client_id": uuid} Format
+    """Send workflow to Comfy and wait for result."""
+    # ComfyUI API expects {"prompt": workflow, "client_id": uuid} format
     client_id = str(uuid.uuid4())
     payload = {"prompt": workflow, "client_id": client_id}
     
-    print(f"📤 Sende Workflow an ComfyUI API...")
+    print(f"📤 Sending Workflow to ComfyUI API...")
     print(f"🔗 URL: {COMFY_URL}/prompt")
     print(f"🆔 Client ID: {client_id}")
     print(f"📋 Workflow Node Count: {len(workflow)}")
     print(f"🔍 Workflow Nodes: {list(workflow.keys())}")
     
-    # DEBUG: Teste verfügbare API Endpoints
+    # DEBUG: Test available API Endpoints
     try:
-        print("🔄 Teste ComfyUI System Stats...")
+        print("🔄 Testing ComfyUI System Stats...")
         test_r = requests.get(f"{COMFY_URL}/system_stats", timeout=5)
         print(f"✅ System Stats: {test_r.status_code}")
         
-        print("🔄 Teste verfügbare Models...")
+        print("🔄 Testing available Models...")
         models_r = requests.get(f"{COMFY_URL}/object_info", timeout=5)
         if models_r.status_code == 200:
             object_info = models_r.json()
             checkpoints = object_info.get("CheckpointLoaderSimple", {}).get("input", {}).get("required", {}).get("ckpt_name", [[]])
             if len(checkpoints) > 0 and len(checkpoints[0]) > 0:
-                print(f"📦 Verfügbare Checkpoints: {checkpoints[0][:3]}..." if len(checkpoints[0]) > 3 else checkpoints[0])
+                print(f"📦 Available Checkpoints: {checkpoints[0][:3]}..." if len(checkpoints[0]) > 3 else checkpoints[0])
             else:
-                print("⚠️ Keine Checkpoints gefunden!")
+                print("⚠️ No Checkpoints found!")
         else:
-            print(f"⚠️ Object Info nicht erreichbar: {models_r.status_code}")
+            print(f"⚠️ Object Info not reachable: {models_r.status_code}")
     except Exception as e:
-        print(f"❌ API Tests fehlgeschlagen: {e}")
-        # Nicht fatal - trotzdem weitermachen
+        print(f"❌ API Tests failed: {e}")
+        # Not fatal - continue anyway
     
-    # DEBUG: Überprüfe Output-Verzeichnis für SaveImage Node
+    # DEBUG: Check Output directory for SaveImage Node
     output_dir = Path("/workspace/ComfyUI/output")
     output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"📁 Output Dir: {output_dir}, existiert: {output_dir.exists()}, beschreibbar: {os.access(output_dir, os.W_OK)}")
+    print(f"📁 Output Dir: {output_dir}, exists: {output_dir.exists()}, writable: {os.access(output_dir, os.W_OK)}")
     
-    # DEBUG: Validiere Workflow-Struktur
+    # DEBUG: Validate Workflow structure
     save_image_nodes = [node_id for node_id, node in workflow.items() if node.get("class_type") == "SaveImage"]
-    print(f"💾 SaveImage Nodes gefunden: {len(save_image_nodes)}")
+    print(f"💾 SaveImage Nodes found: {len(save_image_nodes)}")
     
     try:
-        print(f"🚀 Sende Workflow mit client_id...")
+        print(f"🚀 Sending Workflow with client_id...")
         r = requests.post(f"{COMFY_URL}/prompt", json=payload, timeout=15)
         print(f"📤 Response Status: {r.status_code}")
         print(f"📤 Response Headers: {dict(r.headers)}")
@@ -334,10 +334,10 @@ def _run_workflow(workflow: dict):
         prompt_id = response_data.get("prompt_id")
         
         if not prompt_id:
-            print(f"❌ Keine prompt_id in Response: {response_data}")
+            print(f"❌ No prompt_id in Response: {response_data}")
             raise ValueError(f"ComfyUI Response invalid: {response_data}")
             
-        print(f"✅ Workflow gesendet! Prompt ID: {prompt_id}")
+        print(f"✅ Workflow sent! Prompt ID: {prompt_id}")
         return prompt_id
         
     except requests.exceptions.RequestException as e:
@@ -347,10 +347,10 @@ def _run_workflow(workflow: dict):
         raise
 
 def _wait_for_completion(prompt_id: str):
-    """Warte auf Workflow-Completion und return result."""
-    print(f"⏳ Warte auf Fertigstellung von prompt {prompt_id}…")
+    """Wait for workflow completion and return result."""
+    print(f"⏳ Waiting for completion of prompt {prompt_id}…")
     
-    for attempt in range(60):  # Max 3 Minuten warten
+    for attempt in range(60):  # Max 3 minutes wait
         try:
             history_r = requests.get(f"{COMFY_URL}/history/{prompt_id}")
             if history_r.status_code == 200:
@@ -363,20 +363,20 @@ def _wait_for_completion(prompt_id: str):
                     print(f"🔄 Status Check {attempt+1}: {status_str}")
                     
                     if status_str == "success":
-                        print("✅ Workflow erfolgreich abgeschlossen!")
+                        print("✅ Workflow successfully completed!")
                         return result
                     elif status_str == "error" or "error" in status:
                         error_msg = status.get("error", status)
-                        print(f"❌ ComfyUI Workflow Fehler: {error_msg}")
+                        print(f"❌ ComfyUI Workflow Error: {error_msg}")
                         raise RuntimeError(f"ComfyUI Workflow failed: {error_msg}")
                 else:
-                    print(f"⏳ Prompt {prompt_id} noch nicht in History...")
+                    print(f"⏳ Prompt {prompt_id} not yet in History...")
         except Exception as e:
             print(f"⚠️ Status check error (attempt {attempt+1}): {e}")
         
         time.sleep(3)
     
-    raise TimeoutError("Workflow Timeout nach 3 Minuten")
+    raise TimeoutError("Workflow Timeout after 3 minutes")
 
 
 def _save_to_network_volume(file_path: Path, job_id: Optional[str] = None, retry_copy: bool = True) -> str:
@@ -419,13 +419,13 @@ def _save_to_network_volume(file_path: Path, job_id: Optional[str] = None, retry
 def handler(event):
     """Runpod Handler.
 
-    Erwartet event["input"] mit:
+    Expected event["input"] with:
       - workflow: dict  (ComfyUI Workflow JSON)
     """
     inp = event.get("input", {})
     workflow = inp.get("workflow")
     if not workflow:
-        raise ValueError("workflow fehlt im Input")
+        raise ValueError("workflow missing in input")
 
     raw_job_id = event.get("id") or event.get("requestId") or inp.get("jobId")
     job_id = _sanitize_job_id(raw_job_id)
@@ -433,9 +433,9 @@ def handler(event):
         print(f"⚠️ Received job ID '{raw_job_id}' but sanitization removed all characters")
     print(f"🆔 Runpod Job ID: {job_id}")
 
-    print("🚀 Handler gestartet - ComfyUI Workflow wird verarbeitet...")
-    print(f"📦 S3 Upload: {'✅ Aktiviert' if S3_UPLOAD_ENABLED else '❌ Deaktiviert'}")
-    print(f"📦 Volume Storage: {'✅ Aktiviert' if not S3_UPLOAD_ENABLED else '⚠️ Fallback'}")
+    print("🚀 Handler started - ComfyUI Workflow is being processed...")
+    print(f"📦 S3 Upload: {'✅ Enabled' if S3_UPLOAD_ENABLED else '❌ Disabled'}")
+    print(f"📦 Volume Storage: {'✅ Enabled' if not S3_UPLOAD_ENABLED else '⚠️ Fallback'}")
     
     _start_comfy()
 
@@ -444,99 +444,99 @@ def handler(event):
     volume_ready = _ensure_volume_ready()
     if not volume_ready:
         if S3_UPLOAD_ENABLED:
-            print("⚠️ Volume nicht verfügbar - S3 Upload wird verwendet, aber kein Fallback möglich")
+            print("⚠️ Volume not available - S3 Upload will be used, but no fallback possible")
         else:
             raise RuntimeError(
-                f"Network Volume konnte nicht gemountet werden und S3 ist nicht konfiguriert! "
-                f"Bitte entweder S3-Umgebungsvariablen setzen oder sicherstellen, dass das Volume am Pfad {OUTPUT_BASE} bereitgestellt ist."
+                f"Network volume could not be mounted and S3 is not configured. "
+                f"Either set S3 environment variables or ensure volume is mounted at {OUTPUT_BASE}."
             )
 
     prompt_id = _run_workflow(workflow)
     result = _wait_for_completion(prompt_id)
     
-    # ComfyUI History API Struktur: result["outputs"] enthält node outputs
+    # ComfyUI History API structure: result["outputs"] contains node outputs
     links = []
     local_paths = []
     outputs = result.get("outputs", {})
     
-    print(f"📁 Suche nach generierten Dateien in outputs...")
+    print(f"📁 Searching for generated files in outputs...")
     for node_id, node_output in outputs.items():
         if "images" in node_output:
             for img_data in node_output["images"]:
-                # ComfyUI speichert Bilder standardmäßig in /workspace/ComfyUI/output/
+                # ComfyUI stores images by default in /workspace/ComfyUI/output/
                 filename = img_data.get("filename")
                 subfolder = img_data.get("subfolder", "")
                 
                 if filename:
-                    # Vollständiger Pfad zum Bild
+                    # Full path to image
                     if subfolder:
                         img_path = Path(f"/workspace/ComfyUI/output/{subfolder}/{filename}")
                     else:
                         img_path = Path(f"/workspace/ComfyUI/output/{filename}")
                     
-                    print(f"🖼️ Gefundenes Bild: {img_path}")
+                    print(f"🖼️ Found image: {img_path}")
                     if img_path.exists():
-                        # Upload zu S3 wenn aktiviert
+                        # Upload to S3 when enabled
                         if S3_UPLOAD_ENABLED:
                             try:
                                 s3_url = _upload_to_s3(img_path, job_id=job_id)
                                 links.append(s3_url)
                                 local_paths.append(str(img_path))
-                                print(f"✅ Erfolgreich zu S3 hochgeladen: {s3_url}")
+                                print(f"✅ Successfully uploaded to S3: {s3_url}")
                             except Exception as e:
-                                print(f"⚠️ S3 Upload fehlgeschlagen: {e}")
-                                # Fallback zu Volume wenn verfügbar
+                                print(f"⚠️ S3 Upload failed: {e}")
+                                # Fallback to Volume when available
                                 if _volume_ready():
-                                    print(f"⚠️ Verwende Fallback zu Network Volume...")
+                                    print(f"⚠️ Using fallback to Network Volume...")
                                     try:
                                         network_file_path = _save_to_network_volume(img_path, job_id=job_id)
                                         links.append(network_file_path)
                                         local_paths.append(str(img_path))
-                                        print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
+                                        print(f"✅ Successfully saved to volume: {network_file_path}")
                                     except Exception as vol_err:
-                                        print(f"❌ Volume-Speicherung fehlgeschlagen: {vol_err}")
+                                        print(f"❌ Volume save failed: {vol_err}")
                                         raise RuntimeError(
-                                            f"S3 Upload fehlgeschlagen und Volume-Fallback nicht verfügbar für {img_path.name}"
+                                            f"S3 upload failed and volume fallback unavailable for {img_path.name}"
                                         )
                                 else:
-                                    print(f"❌ Kein Volume-Fallback verfügbar für {img_path.name}")
-                                    raise RuntimeError(f"S3 Upload fehlgeschlagen und kein Volume-Fallback verfügbar")
+                                    print(f"❌ No volume fallback available for {img_path.name}")
+                                    raise RuntimeError(f"S3 upload failed and no volume fallback available")
                         else:
-                            # Nur Volume verwenden
-                            print(f"💾 Speichere auf Network Volume: {img_path}")
+                            # Only use volume
+                            print(f"💾 Saving to Network Volume: {img_path}")
                             network_file_path = _save_to_network_volume(img_path, job_id=job_id)
                             links.append(network_file_path)
                             # Store original local path for consistency with S3 mode
                             local_paths.append(str(img_path))
-                            print(f"✅ Erfolgreich gespeichert: {network_file_path}")
+                            print(f"✅ Successfully saved: {network_file_path}")
                     else:
-                        print(f"⚠️ Datei nicht gefunden: {img_path}")
+                        print(f"⚠️ File not found: {img_path}")
 
     if not links:
-        print("❌ Keine Bilder gefunden in ComfyUI outputs")
-        # Fallback: suche alle Bilder im output Verzeichnis
+        print("❌ No images found in ComfyUI outputs")
+        # Fallback: search all images in output directory
         output_dir = Path("/workspace/ComfyUI/output")
         if output_dir.exists():
             for img_file in output_dir.glob("*.png"):
-                print(f"💾 Fallback Speicherung: {img_file}")
+                print(f"💾 Fallback save: {img_file}")
                 if S3_UPLOAD_ENABLED:
                     try:
                         s3_url = _upload_to_s3(img_file, job_id=job_id)
                         links.append(s3_url)
                         local_paths.append(str(img_file))
                     except Exception as e:
-                        print(f"⚠️ S3 Upload fehlgeschlagen für {img_file.name}: {e}")
+                        print(f"⚠️ S3 Upload failed for {img_file.name}: {e}")
                         if _volume_ready():
-                            print(f"⚠️ Verwende Fallback zu Network Volume...")
+                            print(f"⚠️ Using fallback to Network Volume...")
                             try:
                                 network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                                 links.append(network_file_path)
                                 local_paths.append(str(img_file))
-                                print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
+                                print(f"✅ Successfully saved to volume: {network_file_path}")
                             except Exception as vol_err:
-                                print(f"❌ Volume-Speicherung fehlgeschlagen für {img_file.name}: {vol_err}")
+                                print(f"❌ Volume save failed for {img_file.name}: {vol_err}")
                         else:
-                            print(f"❌ Kein Volume-Fallback verfügbar für {img_file.name}")
+                            print(f"❌ No volume fallback available for {img_file.name}")
                 else:
                     network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                     links.append(network_file_path)
@@ -549,7 +549,7 @@ def handler(event):
         "storage_type": "s3" if S3_UPLOAD_ENABLED else "volume",
     }
     
-    # Optionale zusätzliche Infos
+    # Optional additional info
     if S3_UPLOAD_ENABLED:
         response["s3_bucket"] = S3_BUCKET
         response["local_paths"] = local_paths
