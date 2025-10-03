@@ -172,14 +172,15 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     print(f"☁️ Uploading {file_path.name} to S3: s3://{S3_BUCKET}/{s3_key}")
     
     # Determine Content-Type
+    suffix = file_path.suffix.lower()
     content_type = "image/png"
-    if file_path.suffix.lower() == ".jpg" or file_path.suffix.lower() == ".jpeg":
+    if suffix == ".jpg" or suffix == ".jpeg":
         content_type = "image/jpeg"
-    elif file_path.suffix.lower() == ".webp":
+    elif suffix == ".webp":
         content_type = "image/webp"
-    elif file_path.suffix.lower() == ".mp4":
+    elif suffix == ".mp4":
         content_type = "video/mp4"
-    elif file_path.suffix.lower() == ".gif":
+    elif suffix == ".gif":
         content_type = "image/gif"
     
     try:
