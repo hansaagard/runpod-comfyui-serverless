@@ -8,8 +8,9 @@ import json
 import runpod
 import uuid
 import boto3
+import threading
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from botocore.exceptions import ClientError
 
@@ -32,40 +33,47 @@ _VOLUME_READY = False
 
 
 class S3ClientManager:
-    """Singleton manager for S3 client to avoid global variable issues in serverless environments."""
+    """Thread-safe singleton manager for S3 client to avoid global variable issues in serverless environments."""
     _instance = None
     _client = None
+    _lock = threading.Lock()
     
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(S3ClientManager, cls).__new__(cls)
+            with cls._lock:
+                # Double-checked locking pattern
+                if cls._instance is None:
+                    cls._instance = super(S3ClientManager, cls).__new__(cls)
         return cls._instance
     
     def get_client(self):
         """Get or create S3 client."""
         if self._client is None and S3_UPLOAD_ENABLED:
-            print(f"🔧 Initialisiere S3 Client (Bucket: {S3_BUCKET}, Region: {S3_REGION})")
-            self._client = boto3.client(
-                's3',
-                aws_access_key_id=S3_ACCESS_KEY,
-                aws_secret_access_key=S3_SECRET_KEY,
-                endpoint_url=S3_ENDPOINT_URL,
-                region_name=S3_REGION,
-            )
-            # Test connection
-            try:
-                self._client.head_bucket(Bucket=S3_BUCKET)
-                print(f"✅ S3 Bucket '{S3_BUCKET}' ist erreichbar")
-            except ClientError as e:
-                error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-                if error_code == '404':
-                    print(f"❌ Bucket '{S3_BUCKET}' existiert nicht!")
-                elif error_code == '403':
-                    print(f"❌ Keine Berechtigung für Bucket '{S3_BUCKET}'!")
-                else:
-                    print(f"❌ S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
-                self._client = None  # Reset client to prevent usage
-                raise RuntimeError(f"S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
+            with self._lock:
+                # Double-checked locking for thread safety
+                if self._client is None:
+                    print(f"🔧 Initialisiere S3 Client (Region: {S3_REGION})")
+                    self._client = boto3.client(
+                        's3',
+                        aws_access_key_id=S3_ACCESS_KEY,
+                        aws_secret_access_key=S3_SECRET_KEY,
+                        endpoint_url=S3_ENDPOINT_URL,
+                        region_name=S3_REGION,
+                    )
+                    # Test connection
+                    try:
+                        self._client.head_bucket(Bucket=S3_BUCKET)
+                        print(f"✅ S3 Bucket ist erreichbar")
+                    except ClientError as e:
+                        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+                        # Log detailed error internally but don't expose sensitive info
+                        print(f"❌ S3 Bucket-Zugriff fehlgeschlagen: {error_code}")
+                        if error_code == '404':
+                            print(f"❌ Bucket existiert nicht!")
+                        elif error_code == '403':
+                            print(f"❌ Keine Berechtigung für den Bucket!")
+                        self._client = None  # Reset client to prevent usage
+                        raise RuntimeError("S3 Storage ist nicht verfügbar. Bitte überprüfen Sie die Konfiguration.")
         return self._client
     
     def reset_client(self):
@@ -160,7 +168,7 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     # S3 Key generieren (Pfad im Bucket)
     # Strategy: {job_id}/{timestamp}_{filename} wenn job_id vorhanden, sonst {timestamp}_{filename}
     # timestamp format: YYYYMMDD_HHMMSS (UTC)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     if job_id:
         s3_key = f"{job_id}/{timestamp}_{file_path.name}"
     else:
@@ -480,16 +488,21 @@ def handler(event):
                                 local_paths.append(str(img_path))
                                 print(f"✅ Erfolgreich zu S3 hochgeladen: {s3_url}")
                             except Exception as e:
-                                print(f"❌ S3 Upload fehlgeschlagen: {e}")
+                                print(f"⚠️ S3 Upload fehlgeschlagen: {e}")
                                 # Fallback zu Volume wenn verfügbar
                                 if _volume_ready():
-                                    print(f"⚠️ Fallback: Speichere auf Network Volume...")
-                                    network_file_path = _save_to_network_volume(img_path, job_id=job_id)
-                                    links.append(network_file_path)
-                                    local_paths.append(str(img_path))
-                                    print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
+                                    print(f"⚠️ Verwende Fallback zu Network Volume...")
+                                    try:
+                                        network_file_path = _save_to_network_volume(img_path, job_id=job_id)
+                                        links.append(network_file_path)
+                                        local_paths.append(str(img_path))
+                                        print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
+                                    except Exception as vol_err:
+                                        print(f"❌ Volume-Speicherung fehlgeschlagen: {vol_err}")
+                                        raise RuntimeError(f"Weder S3 noch Volume verfügbar für {img_path.name}")
                                 else:
-                                    raise RuntimeError(f"Weder S3 noch Volume verfügbar! {e}")
+                                    print(f"❌ Kein Volume-Fallback verfügbar für {img_path.name}")
+                                    raise RuntimeError(f"S3 Upload fehlgeschlagen und kein Volume-Fallback verfügbar")
                         else:
                             # Nur Volume verwenden
                             print(f"💾 Speichere auf Network Volume: {img_path}")
@@ -511,16 +524,20 @@ def handler(event):
                     try:
                         s3_url = _upload_to_s3(img_file, job_id=job_id)
                         links.append(s3_url)
+                        local_paths.append(str(img_file))
                     except Exception as e:
-                        print(f"❌ S3 Upload fehlgeschlagen für {img_file}: {e}")
+                        print(f"⚠️ S3 Upload fehlgeschlagen für {img_file.name}: {e}")
                         if _volume_ready():
-                            print(f"⚠️ Fallback: Speichere auf Network Volume...")
-                            network_file_path = _save_to_network_volume(img_file, job_id=job_id)
-                            links.append(network_file_path)
-                            local_paths.append(network_file_path)
-                            print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
+                            print(f"⚠️ Verwende Fallback zu Network Volume...")
+                            try:
+                                network_file_path = _save_to_network_volume(img_file, job_id=job_id)
+                                links.append(network_file_path)
+                                local_paths.append(network_file_path)
+                                print(f"✅ Erfolgreich auf Volume gespeichert: {network_file_path}")
+                            except Exception as vol_err:
+                                print(f"❌ Volume-Speicherung fehlgeschlagen für {img_file.name}: {vol_err}")
                         else:
-                            print(f"❌ Weder S3 noch Volume verfügbar für {img_file}")
+                            print(f"❌ Kein Volume-Fallback verfügbar für {img_file.name}")
                 else:
                     network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                     links.append(network_file_path)
