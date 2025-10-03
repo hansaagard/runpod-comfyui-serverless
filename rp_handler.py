@@ -11,6 +11,7 @@ import uuid
 import shutil
 import datetime
 import traceback
+import mimetypes
 from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
@@ -83,6 +84,49 @@ def _get_s3_client():
     return boto3.client("s3", **client_kwargs)
 
 
+def _get_content_type(file_path: Path) -> str:
+    """
+    Determine MIME type based on file extension.
+    
+    Args:
+        file_path: Path to the file
+        
+    Returns:
+        str: MIME type string (e.g., 'image/png', 'video/mp4')
+    """
+    # Initialize mimetypes if not already done
+    if not mimetypes.inited:
+        mimetypes.init()
+    
+    # Get MIME type from file extension
+    mime_type, _ = mimetypes.guess_type(str(file_path))
+    
+    # Default to 'application/octet-stream' if unknown
+    if mime_type is None:
+        # Common fallbacks for AI-generated content
+        ext = file_path.suffix.lower()
+        if ext in ['.png']:
+            return 'image/png'
+        elif ext in ['.jpg', '.jpeg']:
+            return 'image/jpeg'
+        elif ext in ['.webp']:
+            return 'image/webp'
+        elif ext in ['.gif']:
+            return 'image/gif'
+        elif ext in ['.mp4']:
+            return 'video/mp4'
+        elif ext in ['.avi']:
+            return 'video/x-msvideo'
+        elif ext in ['.mov']:
+            return 'video/quicktime'
+        elif ext in ['.webm']:
+            return 'video/webm'
+        else:
+            return 'application/octet-stream'
+    
+    return mime_type
+
+
 def _upload_to_s3(file_path: Path, job_id: str) -> dict:
     """
     Upload file to S3.
@@ -100,6 +144,10 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
         s3_key = f"{job_id}/{timestamp}_{file_path.name}"
         
+        # Determine content type based on file extension
+        content_type = _get_content_type(file_path)
+        print(f"📋 Detected content type: {content_type}")
+        
         # Upload file
         print(f"📤 Uploading to bucket: {config['bucket']}, key: {s3_key}")
         with open(file_path, "rb") as f:
@@ -108,7 +156,7 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
                 config["bucket"],
                 s3_key,
                 ExtraArgs={
-                    "ContentType": "image/png",
+                    "ContentType": content_type,
                     "CacheControl": "public, max-age=31536000",
                 }
             )

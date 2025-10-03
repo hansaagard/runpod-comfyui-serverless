@@ -207,7 +207,7 @@ Workflows are passed as JSON directly in the request. The handler expects the Co
    S3_BUCKET=your-bucket-name
    S3_ACCESS_KEY=<aws-access-key>
    S3_SECRET_KEY=<aws-secret-key>
-   S3_REGION=eu-east-1
+   S3_REGION=us-east-1
    ```
 
 ### Backblaze B2
