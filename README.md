@@ -1,15 +1,19 @@
 # RunPod ComfyUI Serverless Handler
 
-A high-performance serverless handler for running ComfyUI workflows on RunPod's Serverless GPU Infrastructure.
+A high-performance serverless handler for running ComfyUI image & video workflows on RunPod's Serverless GPU Infrastructure with S3 storage support.
+
+> **⚠️ CUDA 12.8 Required**: This image only works on **Ada Lovelace** (RTX 40xx, L40), **Hopper** (H100/H200), or **Blackwell** GPUs. Older Ampere GPUs (RTX 30xx, A100) are NOT supported!
 
 ## 🚀 Features
 
 - **Serverless GPU Computing**: Uses RunPod's Serverless Platform for scalable GPU computations
-- **ComfyUI Integration**: Seamless integration with ComfyUI for AI image generation
-- **RunPod Network Volume Support**: Automatic saving of generated images to RunPod Network Volume
+- **ComfyUI Integration**: Seamless integration with ComfyUI for AI image & video generation
+- **Heavy Video Rendering**: Optimized for long-running video workflows (AnimateDiff, SVD, etc.)
+- **S3 Storage**: Direct upload to Cloudflare R2, AWS S3, or Backblaze B2 with presigned URLs
+- **RunPod Network Volume Support**: Automatic backup of generated files to RunPod Network Volume
 - **Workflow Flexibility**: Supports both predefined and dynamic workflows
-- **Error Handling**: Robust error handling and detailed logging
-- **Test Suite**: Comprehensive test script for local and remote testing
+- **Extended Timeouts**: 20 min startup timeout, 60 min workflow execution timeout
+- **Error Handling**: Robust error handling and detailed logging with automatic stderr output
 
 ## 📋 Requirements
 
@@ -17,6 +21,36 @@ A high-performance serverless handler for running ComfyUI workflows on RunPod's 
 - RunPod Network Volume (for persistent storage)
 - Docker (for image build)
 - Python 3.11+
+
+### 🔥 GPU Requirements (CUDA 12.8)
+
+**⚠️ IMPORTANT: This image requires CUDA 12.8 or higher!**
+
+Only GPUs with **Ada Lovelace, Hopper, or Blackwell architecture** are supported:
+
+#### ✅ Compatible GPUs (CUDA 12.8+):
+- **Consumer/Prosumer:**
+  - RTX 4090, RTX 4080, RTX 4070 Ti (Ada Lovelace)
+  - RTX 5090, RTX 5080 (Blackwell - when available)
+  
+- **Datacenter:**
+  - L40, L40S (Ada Lovelace)
+  - H100, H200 (Hopper)
+  - B100, B200 (Blackwell)
+
+#### ❌ NOT Compatible (Older Architectures):
+- **RTX 3090, RTX 3080, A100, A40** (Ampere) - Will NOT work!
+- All older GPUs (Turing, Pascal, etc.)
+
+**How to filter in RunPod:**
+1. Go to RunPod → Serverless → Deploy Endpoint
+2. Filter by "CUDA 12.8" or "CUDA 12.9"
+3. Only select GPUs from the compatible list above
+
+#### 💾 VRAM Recommendations by Workload:
+- **Images (SD 1.5/SDXL)**: 16GB+ (RTX 4080, L40)
+- **Videos (AnimateDiff, SVD)**: 24GB+ (RTX 4090, L40S)
+- **Heavy Video (4K, long sequences)**: 48GB+ (H100, H200)
 
 ## 🛠️ Installation
 
@@ -100,37 +134,41 @@ Workflows are passed as JSON directly in the request. The handler expects the Co
 
 ### Response Format
 
-**With S3 Storage:**
+**With S3 Storage (Cloudflare R2, AWS S3, Backblaze B2):**
 ```json
 {
   "links": [
-    "https://your-bucket.s3.amazonaws.com/job-id/20250103_120530_output_image.png?X-Amz-..."
+    "https://account-id.r2.cloudflarestorage.com/comfyui-outputs/job-id/20251003_120530_output_image.png?X-Amz-..."
   ],
   "total_images": 1,
   "job_id": "abc123",
   "storage_type": "s3",
-  "s3_bucket": "your-bucket",
+  "s3_bucket": "comfyui-outputs",
   "local_paths": [
     "/workspace/ComfyUI/output/output_image.png"
+  ],
+  "volume_paths": [
+    "/runpod-volume/comfyui/output/comfyui-20251003_120530_000000-abc12345-output_image.png"
   ]
 }
 ```
 
-**With Network Volume:**
+**With Network Volume Only (S3 not configured):**
 ```json
 {
   "links": [
-    "/runpod-volume/job-id/output_image.png"
+    "/runpod-volume/comfyui/output/comfyui-20251003_120530_000000-abc12345-output_image.png"
   ],
   "total_images": 1,
   "job_id": "abc123",
   "storage_type": "volume",
-  "output_base": "/runpod-volume",
-  "saved_paths": [
-    "/runpod-volume/job-id/output_image.png"
+  "volume_paths": [
+    "/runpod-volume/comfyui/output/comfyui-20251003_120530_000000-abc12345-output_image.png"
   ]
 }
 ```
+
+**Note:** When S3 is configured, images are uploaded to S3 **and** backed up to the Network Volume. The `links` array contains publicly accessible S3 URLs (presigned URLs by default, or custom CDN URLs if `S3_PUBLIC_URL` is set).
 
 ## ☁️ S3 Setup Guide
 
@@ -169,7 +207,7 @@ Workflows are passed as JSON directly in the request. The handler expects the Co
    S3_BUCKET=your-bucket-name
    S3_ACCESS_KEY=<aws-access-key>
    S3_SECRET_KEY=<aws-secret-key>
-   S3_REGION=us-east-1
+   S3_REGION=eu-east-1
    ```
 
 ### Backblaze B2
@@ -237,7 +275,8 @@ curl -X POST "$API_URL" \
    - Create new Serverless Endpoint
    - Docker Image: `ecomtree/comfyui-serverless:latest`
    - Container Disk: at least 15GB
-   - GPU: at least RTX 3090 or better
+   - **GPU Filter**: CUDA 12.8 or 12.9 only!
+   - **GPU**: RTX 4090, L40/L40S, H100/H200 or better (see GPU Requirements above)
    - **Important**: Connect Network Volume with sufficient storage
 
 3. **Configure Endpoint**
@@ -248,17 +287,23 @@ curl -X POST "$API_URL" \
 ## 📊 Performance
 
 - **Cold Start**: ~15-30 seconds (ComfyUI + Model Loading)
+- **Heavy Model Loading**: Up to 20 minutes for large model collections
 - **Warm Start**: ~2-5 seconds
-- **Workflow Execution**: Depends on complexity and model (5-120 seconds)
-- **Volume Save**: <1 second per image
+- **Image Workflow**: 5-120 seconds (depends on model and settings)
+- **Video Workflow**: 2-60 minutes (depends on frames, resolution, and models)
+- **S3 Upload**: ~1-5 seconds per file
+- **Volume Save**: <1 second per file
 
 ## 💡 Technical Details
 
 - **Base Image**: `runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04`
+- **CUDA Version**: 12.8.1 (requires Ada Lovelace, Hopper, or Blackwell GPUs)
 - **ComfyUI Version**: v0.3.57
 - **PyTorch**: 2.8.0 with CUDA 12.8
 - **Pre-installed Models**: Stable Diffusion 1.5 (v1-5-pruned-emaonly)
 - **GPU Memory**: Optimized with `--normalvram` flag
+- **Tensor Cores**: Fully optimized for modern Tensor Cores (4th gen+)
+- **Custom Nodes**: LoadImageFromHttpURL pre-installed
 
 ## 🤝 Contributing
 

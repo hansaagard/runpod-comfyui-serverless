@@ -12,6 +12,9 @@ import shutil
 import datetime
 import traceback
 from pathlib import Path
+import boto3
+from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.config import Config
 
 # Constants
 WORKSPACE_PATH = Path("/workspace")
@@ -35,6 +38,118 @@ def _parse_bool_env(key: str, default: str = "false") -> bool:
 
     value = os.getenv(key, default).lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def _get_s3_config() -> dict:
+    """Get S3 configuration from environment variables."""
+    return {
+        "bucket": os.getenv("S3_BUCKET"),
+        "access_key": os.getenv("S3_ACCESS_KEY"),
+        "secret_key": os.getenv("S3_SECRET_KEY"),
+        "endpoint_url": os.getenv("S3_ENDPOINT_URL"),
+        "region": os.getenv("S3_REGION", "auto"),
+        "public_url": os.getenv("S3_PUBLIC_URL"),
+        "signed_url_expiry": int(os.getenv("S3_SIGNED_URL_EXPIRY", "3600")),
+    }
+
+
+def _is_s3_configured() -> bool:
+    """Check if S3 is properly configured."""
+    config = _get_s3_config()
+    return all([config["bucket"], config["access_key"], config["secret_key"]])
+
+
+def _get_s3_client():
+    """Create and return S3 client."""
+    config = _get_s3_config()
+    
+    s3_config = Config(
+        signature_version='s3v4',
+        s3={'addressing_style': 'path'}
+    )
+    
+    client_kwargs = {
+        "aws_access_key_id": config["access_key"],
+        "aws_secret_access_key": config["secret_key"],
+        "config": s3_config,
+    }
+    
+    if config["endpoint_url"]:
+        client_kwargs["endpoint_url"] = config["endpoint_url"]
+    
+    if config["region"]:
+        client_kwargs["region_name"] = config["region"]
+    
+    return boto3.client("s3", **client_kwargs)
+
+
+def _upload_to_s3(file_path: Path, job_id: str) -> dict:
+    """
+    Upload file to S3.
+    
+    Returns:
+        dict: {"success": bool, "url": str, "error": str}
+    """
+    print(f"☁️ Uploading to S3: {file_path.name}")
+    
+    try:
+        config = _get_s3_config()
+        s3_client = _get_s3_client()
+        
+        # Generate S3 key with job_id prefix and timestamp
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        s3_key = f"{job_id}/{timestamp}_{file_path.name}"
+        
+        # Upload file
+        print(f"📤 Uploading to bucket: {config['bucket']}, key: {s3_key}")
+        with open(file_path, "rb") as f:
+            s3_client.upload_fileobj(
+                f,
+                config["bucket"],
+                s3_key,
+                ExtraArgs={
+                    "ContentType": "image/png",
+                    "CacheControl": "public, max-age=31536000",
+                }
+            )
+        
+        # Generate URL
+        if config["public_url"]:
+            # Use custom public URL (e.g., CDN)
+            url = f"{config['public_url'].rstrip('/')}/{s3_key}"
+        else:
+            # Generate presigned URL
+            url = s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": config["bucket"], "Key": s3_key},
+                ExpiresIn=config["signed_url_expiry"],
+            )
+        
+        print(f"✅ S3 Upload successful: {s3_key}")
+        print(f"🔗 URL: {url[:100]}...")
+        
+        return {
+            "success": True,
+            "url": url,
+            "s3_key": s3_key,
+            "error": None
+        }
+        
+    except NoCredentialsError:
+        error_msg = "S3 credentials not found or invalid"
+        print(f"❌ S3 Upload Error: {error_msg}")
+        return {"success": False, "url": None, "error": error_msg}
+    
+    except ClientError as e:
+        error_msg = f"S3 Client Error: {e}"
+        print(f"❌ S3 Upload Error: {error_msg}")
+        return {"success": False, "url": None, "error": error_msg}
+    
+    except Exception as e:
+        error_msg = f"Unexpected S3 Error: {e}"
+        print(f"❌ S3 Upload Error: {error_msg}")
+        print(f"📋 Traceback: {traceback.format_exc()}")
+        return {"success": False, "url": None, "error": error_msg}
 
 
 def _wait_for_path(path: Path, timeout: int = 20, poll_interval: float = 1.0) -> bool:
@@ -198,22 +313,28 @@ def _is_comfyui_running():
     return False
 
 
-def _wait_for_comfyui(max_retries=30, delay=2):
-    """Wait until ComfyUI is ready."""
+def _wait_for_comfyui(max_retries=600, delay=2):
+    """Wait until ComfyUI is ready. Default: 20 minutes (600 retries × 2 sec = 1200s)"""
+    print(f"⏳ Waiting for ComfyUI to start (timeout: {max_retries * delay}s = {max_retries * delay / 60:.1f} min)...")
+    
     for i in range(max_retries):
         try:
             response = requests.get(f"{COMFYUI_BASE_URL}/system_stats", timeout=5)
             if response.status_code == 200:
-                print(f"✅ ComfyUI is running.")
+                elapsed = (i + 1) * delay
+                print(f"✅ ComfyUI is running (started after ~{elapsed}s = {elapsed / 60:.1f} min)")
                 return True
         except requests.exceptions.RequestException:
             pass
         
         if i < max_retries - 1:
-            print(f"⏳ Waiting for ComfyUI... ({i+1}/{max_retries})")
+            # Print every 10 seconds to avoid log spam
+            if (i + 1) % 5 == 0:
+                elapsed = (i + 1) * delay
+                print(f"⏳ Still waiting for ComfyUI... ({elapsed}s / {max_retries * delay}s)")
             time.sleep(delay)
     
-    print("❌ ComfyUI failed to start!")
+    print(f"❌ ComfyUI failed to start after {max_retries * delay}s ({max_retries * delay / 60:.1f} min)!")
     return False
 
 
@@ -356,10 +477,11 @@ def _run_workflow(workflow):
             
         print(f"✅ Workflow sent. Prompt ID: {prompt_id}")
         
-        # Wait for completion
-        max_wait = 300  # 5 minutes
+        # Wait for completion - long timeout for heavy video rendering
+        max_wait = 3600  # 60 minutes for video rendering
         start_time = time.monotonic()
         poll_interval = 5  # seconds
+        print(f"⏳ Workflow execution timeout: {max_wait}s ({max_wait / 60:.0f} min)")
 
         while True:
             elapsed = time.monotonic() - start_time
@@ -498,6 +620,21 @@ def _start_comfyui_if_needed():
         # Wait until ComfyUI is ready
         if not _wait_for_comfyui():
             print("❌ ComfyUI failed to start, check logs for details")
+            
+            # Print last 50 lines of stderr for debugging
+            try:
+                with open(stderr_log, "r") as f:
+                    lines = f.readlines()
+                    last_lines = lines[-50:] if len(lines) > 50 else lines
+                    print("=" * 60)
+                    print("📋 Last 50 lines of ComfyUI stderr:")
+                    print("=" * 60)
+                    for line in last_lines:
+                        print(line.rstrip())
+                    print("=" * 60)
+            except Exception as e:
+                print(f"⚠️ Could not read stderr log: {e}")
+            
             return False
         
         return True
@@ -624,42 +761,82 @@ def handler(event):
         if not image_paths:
             return {"error": "No generated images found"}
         
-        # Copy images to Volume Output
-        output_paths = []
-        failed_copies = []
+        # Generate job_id for organizing uploads
+        job_id = event.get("id", str(uuid.uuid4()))
+        
+        # Check if S3 is configured
+        use_s3 = _is_s3_configured()
+        
+        if use_s3:
+            print(f"☁️ S3 configured - uploading images to S3...")
+        else:
+            print(f"📦 S3 not configured - using Network Volume only")
+        
+        # Process images
+        output_urls = []
+        volume_paths = []
+        failed_uploads = []
         
         for img_path in image_paths:
-            copy_result = _copy_to_volume_output(img_path)
-            if copy_result["success"]:
-                output_paths.append(copy_result["path"])
+            # Always save to volume as backup
+            volume_result = _copy_to_volume_output(img_path)
+            if volume_result["success"]:
+                volume_paths.append(volume_result["path"])
+            
+            # Upload to S3 if configured
+            if use_s3:
+                s3_result = _upload_to_s3(img_path, job_id)
+                if s3_result["success"]:
+                    output_urls.append(s3_result["url"])
+                else:
+                    failed_uploads.append({
+                        "source": str(img_path),
+                        "error": s3_result["error"]
+                    })
             else:
-                failed_copies.append({
-                    "source": str(img_path),
-                    "error": copy_result["error"]
-                })
+                # No S3, use volume paths as URLs
+                if volume_result["success"]:
+                    output_urls.append(volume_result["path"])
         
-        # Check if any copies succeeded
-        if not output_paths:
-            error_details = "; ".join([f["error"] for f in failed_copies])
-            return {"error": f"Failed to copy all images to volume: {error_details}"}
+        # Check if we have any output
+        if not output_urls:
+            if use_s3:
+                error_details = "; ".join([f["error"] for f in failed_uploads])
+                return {"error": f"Failed to upload all images to S3: {error_details}"}
+            else:
+                return {"error": "Failed to save all images to volume"}
         
         # Build response
         response = {
-            "volume_paths": output_paths,
-            "links": output_paths,  # backward compatible
-            "total_images": len(output_paths),
-            "comfy_result": result
+            "links": output_urls,
+            "total_images": len(output_urls),
+            "job_id": job_id,
+            "storage_type": "s3" if use_s3 else "volume",
         }
         
-        # Include warning about failed copies if any
-        if failed_copies:
-            response["warnings"] = {
-                "failed_copies": len(failed_copies),
-                "details": failed_copies
-            }
-            print(f"⚠️ {len(failed_copies)} image(s) failed to copy to volume")
+        # Add S3-specific info
+        if use_s3:
+            config = _get_s3_config()
+            response["s3_bucket"] = config["bucket"]
+            response["local_paths"] = [str(p) for p in image_paths]
         
-        print(f"✅ Handler successful! {len(output_paths)} images processed")
+        # Add volume paths
+        if volume_paths:
+            response["volume_paths"] = volume_paths
+        
+        # Include warnings about failed uploads if any
+        if failed_uploads:
+            response["warnings"] = {
+                "failed_uploads": len(failed_uploads),
+                "details": failed_uploads
+            }
+            print(f"⚠️ {len(failed_uploads)} image(s) failed to upload")
+        
+        print(f"✅ Handler successful! {len(output_urls)} images processed")
+        if use_s3:
+            print(f"☁️ Images uploaded to S3: {config['bucket']}")
+        else:
+            print(f"📦 Images saved to volume: {volume_paths}")
         
         return response
         
