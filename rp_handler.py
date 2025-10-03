@@ -29,7 +29,48 @@ S3_SIGNED_URL_EXPIRY = int(os.getenv("S3_SIGNED_URL_EXPIRY", 3600))  # Sekunden 
 S3_UPLOAD_ENABLED = bool(S3_BUCKET and S3_ACCESS_KEY and S3_SECRET_KEY)
 
 _VOLUME_READY = False
-_S3_CLIENT = None
+
+
+class S3ClientManager:
+    """Singleton manager for S3 client to avoid global variable issues in serverless environments."""
+    _instance = None
+    _client = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(S3ClientManager, cls).__new__(cls)
+        return cls._instance
+    
+    def get_client(self):
+        """Get or create S3 client."""
+        if self._client is None and S3_UPLOAD_ENABLED:
+            print(f"🔧 Initialisiere S3 Client (Bucket: {S3_BUCKET}, Region: {S3_REGION})")
+            self._client = boto3.client(
+                's3',
+                aws_access_key_id=S3_ACCESS_KEY,
+                aws_secret_access_key=S3_SECRET_KEY,
+                endpoint_url=S3_ENDPOINT_URL,
+                region_name=S3_REGION,
+            )
+            # Test connection
+            try:
+                self._client.head_bucket(Bucket=S3_BUCKET)
+                print(f"✅ S3 Bucket '{S3_BUCKET}' ist erreichbar")
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+                print(f"⚠️ S3 Bucket Check fehlgeschlagen: {error_code} - {e}")
+                if error_code == '404':
+                    print(f"❌ Bucket '{S3_BUCKET}' existiert nicht!")
+                elif error_code == '403':
+                    print(f"❌ Keine Berechtigung für Bucket '{S3_BUCKET}'!")
+                print(f"❌ S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
+                self._client = None  # Reset client to prevent usage
+                raise RuntimeError(f"S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
+        return self._client
+    
+    def reset_client(self):
+        """Reset the S3 client (useful for testing or error recovery)."""
+        self._client = None
 
 
 def _check_volume_once() -> bool:
@@ -89,30 +130,9 @@ def _volume_ready() -> bool:
 
 
 def _get_s3_client():
-    """Get or create S3 client."""
-    global _S3_CLIENT
-    if _S3_CLIENT is None and S3_UPLOAD_ENABLED:
-        print(f"🔧 Initialisiere S3 Client (Bucket: {S3_BUCKET}, Region: {S3_REGION})")
-        _S3_CLIENT = boto3.client(
-            's3',
-            aws_access_key_id=S3_ACCESS_KEY,
-            aws_secret_access_key=S3_SECRET_KEY,
-            endpoint_url=S3_ENDPOINT_URL,
-            region_name=S3_REGION,
-        )
-        # Test connection
-        try:
-            _S3_CLIENT.head_bucket(Bucket=S3_BUCKET)
-            print(f"✅ S3 Bucket '{S3_BUCKET}' ist erreichbar")
-        except ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-            print(f"⚠️ S3 Bucket Check fehlgeschlagen: {error_code} - {e}")
-            if error_code == '404':
-                print(f"❌ Bucket '{S3_BUCKET}' existiert nicht!")
-            elif error_code == '403':
-                print(f"❌ Keine Berechtigung für Bucket '{S3_BUCKET}'!")
-            raise RuntimeError(f"S3 Bucket '{S3_BUCKET}' ist nicht erreichbar: {error_code} - {e}")
-    return _S3_CLIENT
+    """Get or create S3 client using singleton manager."""
+    s3_manager = S3ClientManager()
+    return s3_manager.get_client()
 
 
 def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
@@ -144,7 +164,7 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
         raise RuntimeError("S3 Client konnte nicht initialisiert werden")
     
     # S3 Key generieren (Pfad im Bucket)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     if job_id:
         s3_key = f"{job_id}/{timestamp}_{file_path.name}"
     else:
@@ -421,7 +441,8 @@ def handler(event):
 
     # Volume readiness check - always ensure volume is ready for fallback
     # even when S3 is enabled, in case S3 upload fails
-    if not _ensure_volume_ready():
+    volume_ready = _ensure_volume_ready()
+    if not volume_ready:
         if S3_UPLOAD_ENABLED:
             print("⚠️ Volume nicht verfügbar - S3 Upload wird verwendet, aber kein Fallback möglich")
         else:
@@ -494,13 +515,13 @@ def handler(event):
                         s3_url = _upload_to_s3(img_file, job_id=job_id)
                         links.append(s3_url)
                     except Exception as e:
-                        print(f"❌ S3 Upload fehlgeschlagen für {img_file}: {e}. Speichere auf Network Volume.")
+                        print(f"❌ S3 Upload fehlgeschlagen für {img_file}: {e}. Fallback auf Network Volume.")
                         if _volume_ready():
                             network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                             links.append(network_file_path)
                             local_paths.append(network_file_path)
+                        else:
                             print(f"❌ Weder S3 noch Volume verfügbar für {img_file}")
-                            print(f"❌ Neither S3 nor volume available for {img_file}")
                 else:
                     network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                     links.append(network_file_path)
