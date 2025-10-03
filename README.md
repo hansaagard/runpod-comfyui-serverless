@@ -1,73 +1,73 @@
 # RunPod ComfyUI Serverless Handler
 
-Ein hochperformanter Serverless Handler für die Ausführung von ComfyUI Workflows auf RunPod's Serverless GPU Infrastructure.
+A high-performance serverless handler for running ComfyUI workflows on RunPod's Serverless GPU Infrastructure.
 
 ## 🚀 Features
 
-- **Serverless GPU Computing**: Nutzt RunPod's Serverless Platform für skalierbare GPU-Berechnungen
-- **ComfyUI Integration**: Nahtlose Integration mit ComfyUI für AI-Bildgenerierung
-- **RunPod Network-Volume-Support**: Automatisches Speichern der generierten Bilder auf dem RunPod Network-Volume
-- **Workflow Flexibilität**: Unterstützt sowohl vordefinierte als auch dynamische Workflows
-- **Error Handling**: Robuste Fehlerbehandlung und detailliertes Logging
-- **Test Suite**: Umfangreiches Test-Script für lokale und Remote-Tests
+- **Serverless GPU Computing**: Uses RunPod's Serverless Platform for scalable GPU computations
+- **ComfyUI Integration**: Seamless integration with ComfyUI for AI image generation
+- **RunPod Network Volume Support**: Automatic saving of generated images to RunPod Network Volume
+- **Workflow Flexibility**: Supports both predefined and dynamic workflows
+- **Error Handling**: Robust error handling and detailed logging
+- **Test Suite**: Comprehensive test script for local and remote testing
 
-## 📋 Voraussetzungen
+## 📋 Requirements
 
-- RunPod Account mit API Key
-- RunPod Network Volume (für persistente Speicherung)
-- Docker (für Image-Build)
+- RunPod Account with API Key
+- RunPod Network Volume (for persistent storage)
+- Docker (for image build)
 - Python 3.11+
 
 ## 🛠️ Installation
 
-1. **Repository klonen**
+1. **Clone Repository**
    ```bash
    git clone https://github.com/EcomTree/runpod-comfyui-serverless.git
    cd runpod-comfyui-serverless
    ```
 
-2. **Docker Image bauen**
+2. **Build Docker Image**
    ```bash
    docker build -t ecomtree/comfyui-serverless:latest -f Serverless.Dockerfile .
    ```
 
-3. **Image zu Docker Hub pushen**
+3. **Push Image to Docker Hub**
    ```bash
    docker push ecomtree/comfyui-serverless:latest
    ```
 
-## 🔧 Konfiguration
+## 🔧 Configuration
 
-### Umgebungsvariablen
+### Environment Variables
 
-Der Handler unterstützt folgende Umgebungsvariablen:
+The handler supports the following environment variables:
 
-#### ComfyUI Konfiguration
+#### ComfyUI Configuration
 - `COMFY_PORT`: ComfyUI Port (default: 8188)
 - `COMFY_HOST`: ComfyUI Host (default: 127.0.0.1)
 
-#### Storage Konfiguration (S3 oder Network Volume)
+#### Storage Configuration (S3 or Network Volume)
 
-**S3 Storage (Empfohlen für HTTP-Zugriff):**
-- `S3_BUCKET`: Name deines S3 Buckets (erforderlich)
-- `S3_ACCESS_KEY`: S3 Access Key ID (erforderlich)
-- `S3_SECRET_KEY`: S3 Secret Access Key (erforderlich)
-- `S3_ENDPOINT_URL`: Custom Endpoint für S3-kompatible Services (z.B. Cloudflare R2, Backblaze B2)
+**S3 Storage (Recommended for HTTP Access):**
+- `S3_BUCKET`: Name of your S3 Bucket (required)
+- `S3_ACCESS_KEY`: S3 Access Key ID (required)
+- `S3_SECRET_KEY`: S3 Secret Access Key (required)
+- `S3_ENDPOINT_URL`: Custom Endpoint for S3-compatible services (e.g. Cloudflare R2, Backblaze B2)
 - `S3_REGION`: S3 Region (default: "auto")
-- `S3_PUBLIC_URL`: Optional: Custom Public URL Prefix (z.B. CDN URL)
-- `S3_SIGNED_URL_EXPIRY`: Gültigkeitsdauer von Signed URLs in Sekunden (default: 3600)
+- `S3_PUBLIC_URL`: Optional: Custom Public URL Prefix (e.g. CDN URL)
+- `S3_SIGNED_URL_EXPIRY`: Validity duration of signed URLs in seconds (default: 3600)
 
 **Network Volume (Fallback):**
-- `RUNPOD_VOLUME_PATH`: Pfad zum Network Volume (default: /runpod-volume)
-- `RUNPOD_OUTPUT_DIR`: Alternatives Output-Verzeichnis (optional)
+- `RUNPOD_VOLUME_PATH`: Path to Network Volume (default: /runpod-volume)
+- `RUNPOD_OUTPUT_DIR`: Alternative output directory (optional)
 
-**Hinweis:** Wenn S3 konfiguriert ist, wird es automatisch verwendet. Das Network Volume dient als Fallback.
+**Note:** When S3 is configured, it will be used automatically. The Network Volume serves as fallback.
 
-### Workflow Konfiguration
+### Workflow Configuration
 
-Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das ComfyUI Workflow-Format.
+Workflows are passed as JSON directly in the request. The handler expects the ComfyUI workflow format.
 
-## 📝 Verwendung
+## 📝 Usage
 
 ### Request Format
 
@@ -76,7 +76,7 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
   "input": {
     "workflow": {
       // ComfyUI Workflow JSON
-      // Beispiel: SD 1.5 Text-to-Image
+      // Example: SD 1.5 Text-to-Image
       "3": {
         "inputs": {
           "seed": 42,
@@ -92,7 +92,7 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
         },
         "class_type": "KSampler"
       }
-      // ... weitere Nodes
+      // ... more nodes
     }
   }
 }
@@ -100,7 +100,7 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
 
 ### Response Format
 
-**Mit S3 Storage:**
+**With S3 Storage:**
 ```json
 {
   "links": [
@@ -116,7 +116,7 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
 }
 ```
 
-**Mit Network Volume:**
+**With Network Volume:**
 ```json
 {
   "links": [
@@ -134,18 +134,18 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
 
 ## ☁️ S3 Setup Guide
 
-### Cloudflare R2 (Empfohlen - Kostenlos bis 10GB)
+### Cloudflare R2 (Recommended - Free up to 10GB)
 
-1. **R2 Bucket erstellen:**
-   - Gehe zu [Cloudflare Dashboard](https://dash.cloudflare.com/) → R2
-   - Erstelle neuen Bucket (z.B. `comfyui-outputs`)
+1. **Create R2 Bucket:**
+   - Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → R2
+   - Create new bucket (e.g. `comfyui-outputs`)
 
-2. **API Token erstellen:**
+2. **Create API Token:**
    - R2 → Manage R2 API Tokens → Create API Token
-   - Notiere: Access Key ID, Secret Access Key
+   - Note down: Access Key ID, Secret Access Key
    - Endpoint URL: `https://<account-id>.r2.cloudflarestorage.com`
 
-3. **Umgebungsvariablen in RunPod setzen:**
+3. **Set Environment Variables in RunPod:**
    ```
    S3_BUCKET=comfyui-outputs
    S3_ACCESS_KEY=<your-access-key>
@@ -156,15 +156,15 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
 
 ### AWS S3
 
-1. **S3 Bucket erstellen:**
+1. **Create S3 Bucket:**
    - [AWS Console](https://console.aws.amazon.com/s3/) → Create Bucket
-   - Region wählen (z.B. `us-east-1`)
+   - Select region (e.g. `us-east-1`)
 
 2. **IAM User & Credentials:**
    - IAM → Users → Add User
    - Permissions: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`
 
-3. **Umgebungsvariablen:**
+3. **Environment Variables:**
    ```
    S3_BUCKET=your-bucket-name
    S3_ACCESS_KEY=<aws-access-key>
@@ -174,9 +174,9 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
 
 ### Backblaze B2
 
-1. **Bucket erstellen:** [Backblaze Console](https://www.backblaze.com/b2/cloud-storage.html)
-2. **Application Key erstellen:** Notiere Key ID & Key
-3. **Umgebungsvariablen:**
+1. **Create Bucket:** [Backblaze Console](https://www.backblaze.com/b2/cloud-storage.html)
+2. **Create Application Key:** Note down Key ID & Key
+3. **Environment Variables:**
    ```
    S3_BUCKET=your-bucket-name
    S3_ACCESS_KEY=<key-id>
@@ -187,11 +187,11 @@ Workflows werden als JSON direkt im Request übergeben. Der Handler erwartet das
 
 ## 🧪 Testing
 
-Test-Skripte sind nicht im Repository enthalten. Erstelle dein eigenes Test-Skript:
+Test scripts are not included in the repository. Create your own test script:
 
 ```bash
 #!/bin/bash
-# WARNUNG: Echte API-Schlüssel oder Endpoint-IDs nicht in die Versionsverwaltung committen!
+# WARNING: Do not commit real API keys or endpoint IDs to version control!
 ENDPOINT_ID="your-endpoint-id"
 API_KEY="your-runpod-api-key"
 API_URL="https://api.runpod.ai/v2/${ENDPOINT_ID}/runsync"
@@ -206,74 +206,74 @@ curl -X POST "$API_URL" \
   }'
 ```
 
-## 🏗️ Architektur
+## 🏗️ Architecture
 
 ```
-├── rp_handler.py          # Haupt-Handler für RunPod
-├── Serverless.Dockerfile  # Docker Image Definition
+├── rp_handler.py          # Main handler for RunPod
+├── Serverless.Dockerfile  # Docker image definition
 ├── .gitignore            # Git ignore rules
-└── README.md             # Diese Datei
+└── README.md             # This file
 ```
 
-### Handler Komponenten
+### Handler Components
 
-- **handler()**: Hauptfunktion für Job-Verarbeitung
-- **_start_comfy()**: ComfyUI Server Management
-- **_run_workflow()**: Workflow Execution über ComfyUI API
-- **_wait_for_completion()**: Monitoring der Workflow-Ausführung
-- **_save_to_network_volume()**: Speicherung auf RunPod Network Volume
-- **_ensure_volume_ready()**: Volume Mount Validation
+- **handler()**: Main function for job processing
+- **_start_comfy()**: ComfyUI server management
+- **_run_workflow()**: Workflow execution via ComfyUI API
+- **_wait_for_completion()**: Monitoring of workflow execution
+- **_save_to_network_volume()**: Saving to RunPod Network Volume
+- **_ensure_volume_ready()**: Volume mount validation
 
 ## 🚀 Deployment
 
-1. **Docker Image bauen und pushen**
+1. **Build and push Docker image**
    ```bash
    docker build -t ecomtree/comfyui-serverless:latest -f Serverless.Dockerfile .
    docker push ecomtree/comfyui-serverless:latest
    ```
 
-2. **RunPod Serverless Endpoint erstellen**
-   - Gehe zu [RunPod Dashboard](https://runpod.io/console/serverless)
-   - Erstelle neuen Serverless Endpoint
+2. **Create RunPod Serverless Endpoint**
+   - Go to [RunPod Dashboard](https://runpod.io/console/serverless)
+   - Create new Serverless Endpoint
    - Docker Image: `ecomtree/comfyui-serverless:latest`
-   - Container Disk: mindestens 15GB
-   - GPU: mindestens RTX 3090 oder besser
-   - **Wichtig**: Network Volume mit ausreichend Speicher verbinden
+   - Container Disk: at least 15GB
+   - GPU: at least RTX 3090 or better
+   - **Important**: Connect Network Volume with sufficient storage
 
-3. **Endpoint konfigurieren**
-   - Setze Umgebungsvariablen falls nötig
-   - Konfiguriere Max Workers und Idle Timeout
-   - Notiere Endpoint ID und API Key
+3. **Configure Endpoint**
+   - Set environment variables if needed
+   - Configure Max Workers and Idle Timeout
+   - Note down Endpoint ID and API Key
 
 ## 📊 Performance
 
-- **Cold Start**: ~15-30 Sekunden (ComfyUI + Model Loading)
-- **Warm Start**: ~2-5 Sekunden
-- **Workflow Execution**: Abhängig von Komplexität und Modell (5-120 Sekunden)
-- **Volume Save**: <1 Sekunde pro Bild
+- **Cold Start**: ~15-30 seconds (ComfyUI + Model Loading)
+- **Warm Start**: ~2-5 seconds
+- **Workflow Execution**: Depends on complexity and model (5-120 seconds)
+- **Volume Save**: <1 second per image
 
-## 💡 Technische Details
+## 💡 Technical Details
 
 - **Base Image**: `runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04`
 - **ComfyUI Version**: v0.3.57
-- **PyTorch**: 2.8.0 mit CUDA 12.8
-- **Vorinstallierte Modelle**: Stable Diffusion 1.5 (v1-5-pruned-emaonly)
-- **GPU Memory**: Optimiert mit `--normalvram` Flag
+- **PyTorch**: 2.8.0 with CUDA 12.8
+- **Pre-installed Models**: Stable Diffusion 1.5 (v1-5-pruned-emaonly)
+- **GPU Memory**: Optimized with `--normalvram` flag
 
 ## 🤝 Contributing
 
-Contributions sind willkommen! Bitte erstelle einen Pull Request mit deinen Änderungen.
+Contributions are welcome! Please create a pull request with your changes.
 
-## 📄 Lizenz
+## 📄 License
 
-Dieses Projekt ist unter der MIT Lizenz lizenziert.
+This project is licensed under the MIT License.
 
-## 🙏 Danksagung
+## 🙏 Acknowledgments
 
-- [RunPod](https://runpod.io) für die Serverless GPU Infrastructure
-- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) für das geniale AI Workflow System
-- Der Open Source Community für die kontinuierliche Unterstützung
+- [RunPod](https://runpod.io) for the Serverless GPU Infrastructure
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) for the awesome AI Workflow System
+- The Open Source Community for continuous support
 
 ---
 
-Erstellt mit ❤️ für die AI Art Community
+Created with ❤️ for the AI Art Community

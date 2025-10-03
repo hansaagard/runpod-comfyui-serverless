@@ -23,8 +23,8 @@ print_color() {
 # Function to check if jq is installed
 check_jq() {
     if ! command -v jq &> /dev/null; then
-        print_color $RED "❌ jq ist nicht installiert. Bitte installiere jq für bessere JSON-Ausgabe."
-        print_color $YELLOW "🔧 Installation: brew install jq (macOS) oder apt-get install jq (Ubuntu)"
+        print_color $RED "❌ jq is not installed. Please install jq for better JSON output."
+        print_color $YELLOW "🔧 Installation: brew install jq (macOS) or apt-get install jq (Ubuntu)"
         return 1
     fi
     return 0
@@ -48,7 +48,7 @@ test_endpoint() {
 EOF
     )
     
-    print_color $YELLOW "📤 Sende Request..."
+    print_color $YELLOW "📤 Sending request..."
     
     # Make the request and capture response
     local response=$(curl -s -w "\n%{http_code}" \
@@ -65,7 +65,7 @@ EOF
     print_color $YELLOW "📥 Response Status: $status_code"
     
     if [ "$status_code" = "200" ]; then
-        print_color $GREEN "✅ Request erfolgreich!"
+        print_color $GREEN "✅ Request successful!"
         
         if check_jq; then
             echo "$response_body" | jq .
@@ -73,21 +73,21 @@ EOF
             echo "$response_body"
         fi
     else
-        print_color $RED "❌ Request fehlgeschlagen!"
+        print_color $RED "❌ Request failed!"
         print_color $RED "Response: $response_body"
     fi
 }
 
 # Check if API_KEY and ENDPOINT_ID are set
 if [ "$API_KEY" = "YOUR_RUNPOD_API_KEY" ] || [ "$ENDPOINT_ID" = "YOUR_ENDPOINT_ID" ]; then
-    print_color $RED "❌ Bitte setze API_KEY und ENDPOINT_ID in diesem Script!"
-    print_color $YELLOW "🔧 Bearbeite die Variablen am Anfang des Scripts:"
-    print_color $YELLOW "   ENDPOINT_ID=\"dein-endpoint-id\""
-    print_color $YELLOW "   API_KEY=\"dein-api-key\""
+    print_color $RED "❌ Please set API_KEY and ENDPOINT_ID in this script!"
+    print_color $YELLOW "🔧 Edit the variables at the beginning of the script:"
+    print_color $YELLOW "   ENDPOINT_ID=\"your-endpoint-id\""
+    print_color $YELLOW "   API_KEY=\"your-api-key\""
     exit 1
 fi
 
-print_color $GREEN "🚀 Starte ComfyUI Serverless Tests"
+print_color $GREEN "🚀 Starting ComfyUI Serverless Tests"
 print_color $GREEN "=====================================\n"
 print_color $BLUE "🔗 Endpoint: $ENDPOINT_ID"
 print_color $BLUE "🌐 URL: $API_URL\n"
@@ -203,5 +203,5 @@ simple_workflow='{
 
 test_endpoint "Simple Text-to-Image" "$simple_workflow"
 
-print_color $GREEN "\n🏁 Tests abgeschlossen!"
-print_color $YELLOW "💡 Tipp: Überprüfe die generierten Bilder in deinem Volume Output Directory"
+print_color $GREEN "\n🏁 Tests completed!"
+print_color $YELLOW "💡 Tip: Check the generated images in your Volume Output Directory"
