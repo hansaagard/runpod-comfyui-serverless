@@ -302,7 +302,7 @@ def _normalize_workflow(workflow_input):
                     return candidate
 
         raise ValueError(
-            "workflow dict enthält keine gültigen Nodes mit class_type – erwartet ComfyUI Workflow"
+            "workflow dict contains no valid nodes with class_type – expected ComfyUI Workflow"
         )
 
     # Stringified JSON – attempt to decode recursively.
@@ -313,23 +313,23 @@ def _normalize_workflow(workflow_input):
         try:
             decoded = json.loads(stripped)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"workflow JSON konnte nicht geparsed werden: {exc}") from exc
+            raise ValueError(f"workflow JSON could not be parsed: {exc}") from exc
         normalized = _normalize_workflow(decoded)
         if normalized is None:
-            raise ValueError("workflow JSON enthält keine gültige Struktur")
+            raise ValueError("workflow JSON contains no valid structure")
         return normalized
 
     # Potential wrapper object with workflow key.
     if isinstance(workflow_input, (list, tuple)):
-        raise TypeError("workflow muss ein Objekt (dict) sein, keine Liste")
+        raise TypeError("workflow must be an object (dict), not a list")
 
-    raise TypeError(f"workflow Typ wird nicht unterstützt: {type(workflow_input).__name__}")
+    raise TypeError(f"workflow type not supported: {type(workflow_input).__name__}")
 
 
 def _run_workflow(workflow: dict):
     """Send workflow to Comfy and wait for result."""
     if not isinstance(workflow, dict):
-        raise TypeError("workflow muss ein dict sein")
+        raise TypeError("workflow must be a dict")
     # ComfyUI API expects {"prompt": workflow, "client_id": uuid} format
     client_id = str(uuid.uuid4())
     payload = {"prompt": workflow, "client_id": client_id}
@@ -485,7 +485,7 @@ def handler(event):
 
     workflow = _normalize_workflow(workflow_raw)
     if not isinstance(workflow, dict) or not workflow:
-        raise ValueError("workflow ist leer oder hat kein gültiges Format (dict erwartet)")
+        raise ValueError("workflow is empty or has no valid format (dict expected)")
 
     raw_job_id = event.get("id") or event.get("requestId") or inp.get("jobId")
     job_id = _sanitize_job_id(raw_job_id)

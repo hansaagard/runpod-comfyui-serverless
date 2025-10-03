@@ -1,65 +1,65 @@
 # Codex Environment Setup Guide
 
-## 🎯 Übersicht
+## 🎯 Overview
 
-Dieses Dokument beschreibt, wie du das RunPod ComfyUI Serverless Repo in der Codex-Umgebung einrichtest.
+This document describes how to set up the RunPod ComfyUI Serverless repo in the Codex environment.
 
-## 🚀 Schnellstart
+## 🚀 Quick Start
 
 ### In Codex Web UI:
 
-1. **Setup-Skript einfügen:**
-   - Gehe zu Codex → "Setup-Skript"
-   - Wähle "Manuell"
-   - Füge folgenden Befehl ein:
+1. **Insert Setup Script:**
+   - Go to Codex → "Setup Script"
+   - Select "Manual"
+   - Paste the following command:
 
 ```bash
 # Codex Setup for RunPod ComfyUI Serverless
 curl -fsSL https://raw.githubusercontent.com/EcomTree/runpod-comfyui-serverless/main/setup-codex.sh | bash
 ```
 
-ODER (falls du den Branch testen willst):
+OR (if you want to test a branch):
 
 ```bash
-# Setup Script ausführen
+# Run Setup Script
 git clone https://github.com/EcomTree/runpod-comfyui-serverless.git /workspace/runpod-comfyui-serverless
 cd /workspace/runpod-comfyui-serverless
 chmod +x setup-codex.sh
 ./setup-codex.sh
 ```
 
-2. **Umgebungsvariablen setzen (Optional):**
-   - Klicke auf "Umgebungsvariablen" → "Hinzufügen"
-   - Füge folgende Variablen hinzu, falls du S3 nutzen willst:
+2. **Set Environment Variables (Optional):**
+   - Click on "Environment Variables" → "Add"
+   - Add the following variables if you want to use S3:
 
-   | Variable | Wert | Beschreibung |
+   | Variable | Value | Description |
    |----------|------|--------------|
-   | `S3_BUCKET` | `dein-bucket-name` | S3 Bucket für Bilder |
+   | `S3_BUCKET` | `your-bucket-name` | S3 Bucket for images |
    | `S3_ACCESS_KEY` | `xxx` | S3 Access Key ID |
    | `S3_SECRET_KEY` | `xxx` | S3 Secret Key |
-   | `S3_ENDPOINT_URL` | `https://...` | Endpoint (für R2/B2) |
-   | `S3_REGION` | `auto` oder `us-east-1` | S3 Region |
+   | `S3_ENDPOINT_URL` | `https://...` | Endpoint (for R2/B2) |
+   | `S3_REGION` | `auto` or `us-east-1` | S3 Region |
 
-3. **Container starten:**
-   - Klicke auf "Ein" beim Container-Caching
-   - Starte die Umgebung
+3. **Start Container:**
+   - Enable "Container Caching"
+   - Start the environment
 
-## 📦 Was wird installiert?
+## 📦 What Gets Installed?
 
-Das Setup-Skript installiert automatisch:
+The setup script automatically installs:
 
-### Python Pakete:
+### Python Packages:
 - ✅ `runpod` - RunPod SDK
 - ✅ `requests` - HTTP Client
 - ✅ `boto3` - AWS S3 SDK
-- ✅ `Pillow` - Bildverarbeitung
-- ✅ `numpy` - Numerische Berechnungen
+- ✅ `Pillow` - Image processing
+- ✅ `numpy` - Numerical computations
 
-### System-Tools:
-- ✅ `jq` - JSON Parser (für Debugging)
+### System Tools:
+- ✅ `jq` - JSON Parser (for debugging)
 - ✅ `curl` - HTTP Client
 
-### Bereits vorinstalliert (laut Codex):
+### Already Pre-installed (according to Codex):
 - ✅ Python 3.12
 - ✅ Node.js 20
 - ✅ Ruby 3.4.4
@@ -70,24 +70,24 @@ Das Setup-Skript installiert automatisch:
 - ✅ Java 21
 - ✅ Swift 6.1
 
-## 🔧 Konfiguration
+## 🔧 Configuration
 
-### Option 1: S3 Storage (Empfohlen für Codex)
+### Option 1: S3 Storage (Recommended for Codex)
 
-S3 ist ideal für Codex, da die generierten Bilder direkt über HTTP-URLs erreichbar sind:
+S3 is ideal for Codex as generated images are directly accessible via HTTP URLs:
 
 ```bash
-# Cloudflare R2 (Kostenlos bis 10GB)
+# Cloudflare R2 (Free up to 10GB)
 S3_BUCKET=comfyui-outputs
-S3_ACCESS_KEY=dein-access-key
-S3_SECRET_KEY=dein-secret-key
+S3_ACCESS_KEY=your-access-key
+S3_SECRET_KEY=your-secret-key
 S3_ENDPOINT_URL=https://account-id.r2.cloudflarestorage.com
 S3_REGION=auto
 ```
 
-### Option 2: Network Volume (nur in RunPod Serverless)
+### Option 2: Network Volume (only in RunPod Serverless)
 
-Network Volumes funktionieren nur in der RunPod Serverless Umgebung, **nicht in Codex**:
+Network Volumes only work in the RunPod Serverless environment, **not in Codex**:
 
 ```bash
 RUNPOD_VOLUME_PATH=/runpod-volume
@@ -95,30 +95,30 @@ RUNPOD_VOLUME_PATH=/runpod-volume
 
 ## 🧪 Testing in Codex
 
-Nach dem Setup kannst du in Codex folgendes testen:
+After setup, you can test the following in Codex:
 
 ```bash
 # In Codex Terminal:
 cd /workspace/runpod-comfyui-serverless
 
-# Python Handler testen (Syntax-Check)
+# Test Python Handler (Syntax Check)
 python3 -m py_compile rp_handler.py
 
-# Dependencies prüfen
-python3 -c "import runpod, requests, boto3; print('✅ Alle Dependencies verfügbar')"
+# Check Dependencies
+python3 -c "import runpod, requests, boto3; print('✅ All dependencies available')"
 
-# Test-Skript vorbereiten
+# Prepare test script
 chmod +x test_endpoint.sh
 ```
 
-## 📝 Wartungsskript
+## 📝 Maintenance Script
 
-Das Setup-Skript wird auch im Dockerfile als "Wartungsskript" referenziert.
+The setup script is also referenced in the Dockerfile as "maintenance script".
 
-**Für RunPod Serverless Container:**
+**For RunPod Serverless Container:**
 
 ```dockerfile
-# Im Serverless.Dockerfile könntest du optional hinzufügen:
+# Optionally add to Serverless.Dockerfile:
 COPY setup-codex.sh /workspace/setup-codex.sh
 RUN chmod +x /workspace/setup-codex.sh && /workspace/setup-codex.sh
 ```
@@ -127,54 +127,54 @@ RUN chmod +x /workspace/setup-codex.sh && /workspace/setup-codex.sh
 
 ### "Connection Error" in Codex Terminal
 
-Das ist normal beim ersten Start. Das Setup-Skript erstellt die notwendige Struktur automatisch.
+This is normal on first start. The setup script creates the necessary structure automatically.
 
 ### "Volume not ready"
 
-In Codex gibt es keine RunPod Network Volumes. Nutze stattdessen S3 Storage.
+In Codex there are no RunPod Network Volumes. Use S3 Storage instead.
 
-### Python Module nicht gefunden
+### Python Module not found
 
 ```bash
-# Führe Setup erneut aus:
+# Run setup again:
 cd /workspace/runpod-comfyui-serverless
 ./setup-codex.sh
 ```
 
-## 🎯 Nächste Schritte
+## 🎯 Next Steps
 
-Nach erfolgreichem Setup:
+After successful setup:
 
-1. **Lokales Testing:**
+1. **Local Testing:**
    ```bash
-   # Teste den Handler (ohne ComfyUI)
-   python3 -c "from rp_handler import handler; print('✅ Handler importierbar')"
+   # Test the handler (without ComfyUI)
+   python3 -c "from rp_handler import handler; print('✅ Handler importable')"
    ```
 
-2. **Docker Build (für Deployment):**
+2. **Docker Build (for Deployment):**
    ```bash
    docker build -t ecomtree/comfyui-serverless:latest -f Serverless.Dockerfile .
    ```
 
 3. **RunPod Deployment:**
-   - Push das Image zu Docker Hub
-   - Erstelle Serverless Endpoint in RunPod
-   - Konfiguriere Umgebungsvariablen
+   - Push the image to Docker Hub
+   - Create Serverless Endpoint in RunPod
+   - Configure environment variables
 
-## 💡 Tipps
+## 💡 Tips
 
-- ✅ **S3 nutzen** für einfachen HTTP-Zugriff auf generierte Bilder
-- ✅ **Cloudflare R2** ist kostenlos bis 10GB (perfekt für Tests)
-- ✅ **Container-Caching aktivieren** in Codex für schnellere Starts
-- ✅ **Setup-Skript** kann beliebig oft ausgeführt werden (idempotent)
+- ✅ **Use S3** for easy HTTP access to generated images
+- ✅ **Cloudflare R2** is free up to 10GB (perfect for testing)
+- ✅ **Enable Container Caching** in Codex for faster starts
+- ✅ **Setup Script** can be run multiple times (idempotent)
 
 ## 🆘 Support
 
-Bei Fragen oder Problemen:
-- Check die Logs: `cat /workspace/logs/*.log`
+For questions or problems:
+- Check the logs: `cat /workspace/logs/*.log`
 - GitHub Issues: https://github.com/EcomTree/runpod-comfyui-serverless/issues
 - RunPod Docs: https://docs.runpod.io/
 
 ---
 
-**Erstellt für Codex Environment Setup** 🚀
+**Created for Codex Environment Setup** 🚀
