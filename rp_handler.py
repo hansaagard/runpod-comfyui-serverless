@@ -29,6 +29,7 @@ COMFYUI_PORT = 8188
 COMFYUI_BASE_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
 DEFAULT_WORKFLOW_DURATION_SECONDS = 60  # Default fallback for workflow start time
 SUPPORTED_IMAGE_EXTENSIONS = ["*.png", "*.jpg", "*.jpeg", "*.webp"]
+URL_TRUNCATE_LENGTH = 100  # Maximum characters to display when logging URLs
 
 # Global variable to track the ComfyUI process
 _comfyui_process = None
@@ -64,9 +65,13 @@ def _get_s3_client():
     """Create and return S3 client."""
     config = _get_s3_config()
     
+    # Allow configuration of S3 signature version and addressing style
+    signature_version = os.getenv("S3_SIGNATURE_VERSION", "s3v4")
+    addressing_style = os.getenv("S3_ADDRESSING_STYLE", "path")
+    
     s3_config = Config(
-        signature_version='s3v4',
-        s3={'addressing_style': 'path'}
+        signature_version=signature_version,
+        s3={'addressing_style': addressing_style}
     )
     
     client_kwargs = {
@@ -101,28 +106,22 @@ def _get_content_type(file_path: Path) -> str:
     # Get MIME type from file extension
     mime_type, _ = mimetypes.guess_type(str(file_path))
     
-    # Default to 'application/octet-stream' if unknown
+    # If mimetypes couldn't determine, fallback to common types for AI-generated content
     if mime_type is None:
-        # Common fallbacks for AI-generated content
+        # Define a minimal fallback mapping for common AI output formats
+        fallback_types = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+            '.gif': 'image/gif',
+            '.mp4': 'video/mp4',
+            '.avi': 'video/x-msvideo',
+            '.mov': 'video/quicktime',
+            '.webm': 'video/webm',
+        }
         ext = file_path.suffix.lower()
-        if ext in ['.png']:
-            return 'image/png'
-        elif ext in ['.jpg', '.jpeg']:
-            return 'image/jpeg'
-        elif ext in ['.webp']:
-            return 'image/webp'
-        elif ext in ['.gif']:
-            return 'image/gif'
-        elif ext in ['.mp4']:
-            return 'video/mp4'
-        elif ext in ['.avi']:
-            return 'video/x-msvideo'
-        elif ext in ['.mov']:
-            return 'video/quicktime'
-        elif ext in ['.webm']:
-            return 'video/webm'
-        else:
-            return 'application/octet-stream'
+        mime_type = fallback_types.get(ext, 'application/octet-stream')
     
     return mime_type
 
@@ -148,6 +147,9 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
         content_type = _get_content_type(file_path)
         print(f"📋 Detected content type: {content_type}")
         
+        # Get cache control setting from environment or use default (1 year)
+        cache_control = os.getenv("S3_CACHE_CONTROL", "public, max-age=31536000")
+        
         # Upload file
         print(f"📤 Uploading to bucket: {config['bucket']}, key: {s3_key}")
         with open(file_path, "rb") as f:
@@ -157,7 +159,7 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
                 s3_key,
                 ExtraArgs={
                     "ContentType": content_type,
-                    "CacheControl": "public, max-age=31536000",
+                    "CacheControl": cache_control,
                 }
             )
         
@@ -174,7 +176,7 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
             )
         
         print(f"✅ S3 Upload successful: {s3_key}")
-        print(f"🔗 URL: {url[:100]}...")
+        print(f"🔗 URL: {url[:URL_TRUNCATE_LENGTH]}...")
         
         return {
             "success": True,
@@ -837,10 +839,14 @@ def handler(event):
                 if s3_result["success"]:
                     output_urls.append(s3_result["url"])
                 else:
+                    # S3 upload failed, fallback to volume path if available
                     failed_uploads.append({
                         "source": str(img_path),
                         "error": s3_result["error"]
                     })
+                    if volume_result["success"]:
+                        output_urls.append(volume_result["path"])
+                        print(f"⚠️ S3 upload failed for {img_path.name}, using volume path as fallback")
             else:
                 # No S3, use volume paths as URLs
                 if volume_result["success"]:
@@ -850,7 +856,7 @@ def handler(event):
         if not output_urls:
             if use_s3:
                 error_details = "; ".join([f["error"] for f in failed_uploads])
-                return {"error": f"Failed to upload all images to S3: {error_details}"}
+                return {"error": f"Failed to upload all images to S3 and no volume paths available: {error_details}"}
             else:
                 return {"error": "Failed to save all images to volume"}
         
