@@ -32,6 +32,16 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git && \
     pip install --no-cache-dir librosa soundfile av moviepy
 
 # ------------------------------------------------------------
+# Install ComfyUI Custom Nodes
+# ------------------------------------------------------------
+# Install comfyui-mixlab-nodes (provides LoadImageFromHttpURL node)
+RUN mkdir -p /workspace/ComfyUI/custom_nodes && \
+    cd /workspace/ComfyUI/custom_nodes && \
+    git clone https://github.com/shadowcz007/comfyui-mixlab-nodes.git && \
+    cd comfyui-mixlab-nodes && \
+    (pip install --no-cache-dir -r requirements.txt 2>/dev/null || echo "No requirements.txt or installation optional")
+
+# ------------------------------------------------------------
 # Volume Model Setup - Models come from S3 Network Volume
 # ------------------------------------------------------------
 # Create empty Model Directories for ComfyUI
