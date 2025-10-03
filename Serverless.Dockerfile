@@ -22,7 +22,7 @@ RUN pip uninstall -y torch torchvision torchaudio xformers || true && \
         --index-url https://download.pytorch.org/whl/cu128 && \
     pip install --no-cache-dir ninja flash-attn --no-build-isolation && \
     pip install --no-cache-dir tensorrt nvidia-tensorrt accelerate transformers diffusers scipy opencv-python Pillow numpy && \
-    pip install --no-cache-dir runpod requests pathlib
+    pip install --no-cache-dir runpod requests pathlib boto3
 
 # ------------------------------------------------------------
 # ComfyUI Checkout (headless)
