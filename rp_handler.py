@@ -493,7 +493,7 @@ def handler(event):
                         s3_url = _upload_to_s3(img_file, job_id=job_id)
                         links.append(s3_url)
                     except Exception as e:
-                        print(f"❌ S3 upload failed for {img_file}: {e}. Falling back to network volume.")
+                        print(f"❌ S3 Upload fehlgeschlagen für {img_file}: {e}. Speichere auf Network Volume.")
                         if _volume_ready():
                             network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                             links.append(network_file_path)
