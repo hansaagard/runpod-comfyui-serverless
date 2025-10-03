@@ -155,9 +155,8 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     if not S3_UPLOAD_ENABLED:
         raise RuntimeError("S3 Upload is not configured. Please set S3_BUCKET, S3_ACCESS_KEY and S3_SECRET_KEY.")
     
+    # S3ClientManager().get_client() will raise RuntimeError if client cannot be initialized
     s3_client = S3ClientManager().get_client()
-    if not s3_client:
-        raise RuntimeError("S3 Client could not be initialized")
     
     # S3 Key generation strategy:
     # - Format: {job_id}/{timestamp}_{unique_id}_{filename} if job_id present, else {timestamp}_{unique_id}_{filename}
