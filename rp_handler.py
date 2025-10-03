@@ -498,7 +498,7 @@ def handler(event):
                             network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                             links.append(network_file_path)
                             local_paths.append(network_file_path)
-                        else:
+                            print(f"❌ Weder S3 noch Volume verfügbar für {img_file}")
                             print(f"❌ Neither S3 nor volume available for {img_file}")
                 else:
                     network_file_path = _save_to_network_volume(img_file, job_id=job_id)
