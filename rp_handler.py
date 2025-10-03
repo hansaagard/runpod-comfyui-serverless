@@ -184,7 +184,7 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
         content_type = "image/gif"
     
     try:
-        # Set content type for the uploaded object (not for signed URLs)
+        # Set content type for the uploaded object; this will be returned when accessed, including via signed URLs
         extra_args = {
             'ContentType': content_type,
         }
