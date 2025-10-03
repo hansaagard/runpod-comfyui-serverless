@@ -34,11 +34,11 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git && \
 # ------------------------------------------------------------
 # Install ComfyUI Custom Nodes
 # ------------------------------------------------------------
-# Install comfyui-mixlab-nodes (provides LoadImageFromHttpURL node)
+# Install LoadImageFromHttpURL custom node
 RUN mkdir -p /workspace/ComfyUI/custom_nodes && \
     cd /workspace/ComfyUI/custom_nodes && \
-    git clone https://github.com/shadowcz007/comfyui-mixlab-nodes.git && \
-    cd comfyui-mixlab-nodes && \
+    git clone https://github.com/jerrywap/ComfyUI_LoadImageFromHttpURL.git && \
+    cd ComfyUI_LoadImageFromHttpURL && \
     (pip install --no-cache-dir -r requirements.txt 2>/dev/null || echo "No requirements.txt or installation optional")
 
 # ------------------------------------------------------------
