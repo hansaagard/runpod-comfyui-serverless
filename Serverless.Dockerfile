@@ -39,7 +39,12 @@ RUN mkdir -p /workspace/ComfyUI/custom_nodes && \
     cd /workspace/ComfyUI/custom_nodes && \
     git clone https://github.com/jerrywap/ComfyUI_LoadImageFromHttpURL.git && \
     cd ComfyUI_LoadImageFromHttpURL && \
-    (pip install --no-cache-dir -r requirements.txt 2>/dev/null || echo "No requirements.txt or installation optional")
+    if [ -f requirements.txt ]; then \
+        echo "Installing dependencies from requirements.txt..." && \
+        pip install --no-cache-dir -r requirements.txt; \
+    else \
+        echo "No requirements.txt found, skipping dependency installation"; \
+    fi
 
 # ------------------------------------------------------------
 # Volume Model Setup - Models come from S3 Network Volume
