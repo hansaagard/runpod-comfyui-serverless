@@ -449,7 +449,7 @@ def handler(event):
                                     print(f"⚠️ Fallback: Speichere auf Network Volume...")
                                     network_file_path = _save_to_network_volume(img_path, job_id=job_id)
                                     links.append(network_file_path)
-                                    local_paths.append(network_file_path)
+                                    local_paths.append(str(img_path))
                                 else:
                                     raise RuntimeError(f"Weder S3 noch Volume verfügbar! {e}")
                         else:
