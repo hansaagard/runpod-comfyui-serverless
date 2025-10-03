@@ -160,7 +160,7 @@ def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     
     # S3 Key generation strategy:
     # - Format: {job_id}/{timestamp}_{unique_id}_{filename} if job_id present, else {timestamp}_{unique_id}_{filename}
-    # - timestamp: YYYYMMDD_HHMMSS_ffffff (UTC with microseconds, %f always produces 6 digits)
+    # - timestamp: YYYYMMDD_HHMMSS_ffffff (UTC with microseconds, %f always produces 6 zero-padded digits)
     # - unique_id: 8-char hex UUID to prevent collisions in high-concurrency scenarios
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     unique_id = uuid.uuid4().hex[:8]
