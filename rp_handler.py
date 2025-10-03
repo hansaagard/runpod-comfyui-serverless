@@ -10,6 +10,7 @@ import uuid
 import boto3
 from pathlib import Path
 from datetime import datetime, timedelta
+from typing import Optional
 from botocore.exceptions import ClientError
 
 COMFY_PORT = int(os.getenv("COMFY_PORT", 8188))
@@ -113,7 +114,7 @@ def _get_s3_client():
     return _S3_CLIENT
 
 
-def _upload_to_s3(file_path: Path, job_id: str | None = None) -> str:
+def _upload_to_s3(file_path: Path, job_id: Optional[str] = None) -> str:
     """Upload file to S3 and return public/signed URL."""
     if not S3_UPLOAD_ENABLED:
         raise RuntimeError("S3 Upload ist nicht konfiguriert. Bitte S3_BUCKET, S3_ACCESS_KEY und S3_SECRET_KEY setzen.")
@@ -143,10 +144,9 @@ def _upload_to_s3(file_path: Path, job_id: str | None = None) -> str:
         content_type = "image/gif"
     
     try:
-        # Upload mit public-read ACL (optional - kommentiere aus wenn du signed URLs bevorzugst)
+        # Upload with content type - using signed URLs for security
         extra_args = {
             'ContentType': content_type,
-            # 'ACL': 'public-read',  # Uncomment für public files
         }
         
         s3_client.upload_file(
@@ -184,14 +184,7 @@ def _upload_to_s3(file_path: Path, job_id: str | None = None) -> str:
         raise
 
 
-def _sanitize_job_id(job_id: str | None) -> str | None:
-    if not job_id:
-        return None
-    sanitized = re.sub(r"[^a-zA-Z0-9_.-]", "_", str(job_id))
-    return sanitized.strip("._") or None
-
-
-def _sanitize_job_id(job_id: str | None) -> str | None:
+def _sanitize_job_id(job_id: Optional[str]) -> Optional[str]:
     if not job_id:
         return None
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]", "_", str(job_id))
@@ -346,7 +339,7 @@ def _wait_for_completion(prompt_id: str):
     raise TimeoutError("Workflow Timeout nach 3 Minuten")
 
 
-def _save_to_network_volume(file_path: Path, job_id: str | None = None, retry_copy: bool = True) -> str:
+def _save_to_network_volume(file_path: Path, job_id: Optional[str] = None, retry_copy: bool = True) -> str:
     """Copy file to network volume instead of uploading."""
     if not _volume_ready():
         raise RuntimeError("Volume mount not ready")
@@ -406,9 +399,12 @@ def handler(event):
     
     _start_comfy()
 
-    # Volume nur checken wenn S3 nicht verfügbar ist
-    if not S3_UPLOAD_ENABLED:
-        if not _ensure_volume_ready():
+    # Volume readiness check - always ensure volume is ready for fallback
+    # even when S3 is enabled, in case S3 upload fails
+    if not _ensure_volume_ready():
+        if S3_UPLOAD_ENABLED:
+            print("⚠️ Volume nicht verfügbar - S3 Upload wird verwendet, aber kein Fallback möglich")
+        else:
             raise RuntimeError(
                 f"Weder S3 noch Network Volume sind konfiguriert! "
                 f"Bitte S3 Umgebungsvariablen ODER Volume am Pfad {OUTPUT_BASE} bereitstellen."
@@ -474,8 +470,16 @@ def handler(event):
             for img_file in output_dir.glob("*.png"):
                 print(f"💾 Fallback Speicherung: {img_file}")
                 if S3_UPLOAD_ENABLED:
-                    s3_url = _upload_to_s3(img_file, job_id=job_id)
-                    links.append(s3_url)
+                    try:
+                        s3_url = _upload_to_s3(img_file, job_id=job_id)
+                        links.append(s3_url)
+                    except Exception as e:
+                        print(f"❌ S3 upload failed for {img_file}: {e}. Falling back to network volume.")
+                        if _volume_ready():
+                            network_file_path = _save_to_network_volume(img_file, job_id=job_id)
+                            links.append(network_file_path)
+                        else:
+                            print(f"❌ Neither S3 nor volume available for {img_file}")
                 else:
                     network_file_path = _save_to_network_volume(img_file, job_id=job_id)
                     links.append(network_file_path)
