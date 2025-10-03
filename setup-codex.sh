@@ -52,118 +52,146 @@ print_header() {
 print_header "System-Checks"
 
 # Python Version Check
-log_info "Prüfe Python Installation..."
+log_info "Checking Python installation..."
 if command -v python3 &> /dev/null; then
     PYTHON_VERSION=$(python3 --version | awk '{print $2}')
-    log_success "Python $PYTHON_VERSION gefunden"
+    log_success "Python $PYTHON_VERSION found"
     
-    # Version check (mindestens 3.11)
+    # Version check (minimum 3.11)
     PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
     PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
     
     if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 11 ]); then
-        log_warning "Python 3.11+ empfohlen, gefunden: $PYTHON_VERSION"
+        log_warning "Python 3.11+ recommended, found: $PYTHON_VERSION"
     fi
 else
-    log_error "Python 3 nicht gefunden! Bitte installieren."
+    log_error "Python 3 not found! Please install."
     exit 1
 fi
 
 # Git Check
-log_info "Prüfe Git Installation..."
+log_info "Checking Git installation..."
 if command -v git &> /dev/null; then
     GIT_VERSION=$(git --version | awk '{print $3}')
-    log_success "Git $GIT_VERSION gefunden"
+    log_success "Git $GIT_VERSION found"
 else
-    log_error "Git nicht gefunden! Bitte installieren."
+    log_error "Git not found! Please install."
     exit 1
 fi
 
 # Docker Check (optional)
-log_info "Prüfe Docker Installation..."
+log_info "Checking Docker installation..."
 if command -v docker &> /dev/null; then
     DOCKER_VERSION=$(docker --version | awk '{print $3}' | sed 's/,//')
-    log_success "Docker $DOCKER_VERSION gefunden"
+    log_success "Docker $DOCKER_VERSION found"
     DOCKER_AVAILABLE=true
 else
-    log_warning "Docker nicht gefunden - Docker-Features werden übersprungen"
+    log_warning "Docker not found - Docker features will be skipped"
     DOCKER_AVAILABLE=false
 fi
 
-# Disk Space Check
-log_info "Prüfe verfügbaren Speicherplatz..."
-AVAILABLE_SPACE=$(df -BG . | tail -1 | awk '{print $4}' | sed 's/G//')
-if [ "$AVAILABLE_SPACE" -lt 10 ]; then
-    log_warning "Wenig Speicherplatz verfügbar: ${AVAILABLE_SPACE}GB (mindestens 10GB empfohlen)"
+# Disk Space Check (portable across Linux/macOS/BSD)
+log_info "Checking available disk space..."
+if df -h . > /dev/null 2>&1; then
+    # Use -h for human-readable, extract GB value portably
+    AVAILABLE_SPACE_RAW=$(df -h . | tail -1 | awk '{print $4}')
+    AVAILABLE_SPACE=$(echo "$AVAILABLE_SPACE_RAW" | sed 's/[^0-9.]//g' | cut -d. -f1)
+    
+    # Only warn if we got a numeric value
+    if [[ "$AVAILABLE_SPACE" =~ ^[0-9]+$ ]]; then
+        if [ "$AVAILABLE_SPACE" -lt 10 ]; then
+            log_warning "Low disk space available: ${AVAILABLE_SPACE}GB (minimum 10GB recommended)"
+        else
+            log_success "Available disk space: ${AVAILABLE_SPACE}GB"
+        fi
+    else
+        log_info "Available disk space: $AVAILABLE_SPACE_RAW"
+    fi
 else
-    log_success "Verfügbarer Speicherplatz: ${AVAILABLE_SPACE}GB"
+    log_warning "Could not check disk space"
 fi
 
 # =============================================================================
-# Verzeichnisstruktur erstellen
+# Check for non-interactive mode
 # =============================================================================
 
-print_header "Verzeichnisstruktur erstellen"
+# Detect if running in CI/CD or non-interactive environment
+if [[ ! -t 0 ]] || [[ -n "$CI" ]] || [[ -n "$DEBIAN_FRONTEND" ]]; then
+    NON_INTERACTIVE=true
+    log_info "Non-interactive mode detected"
+else
+    NON_INTERACTIVE=false
+fi
+
+# =============================================================================
+# Directory Structure
+# =============================================================================
+
+print_header "Creating Directory Structure"
 
 WORKSPACE_ROOT=$(pwd)
 log_info "Workspace Root: $WORKSPACE_ROOT"
 
-# Erstelle Entwicklungsverzeichnisse
+# Create development directories
 mkdir -p .venv
 mkdir -p logs
 mkdir -p tests
 mkdir -p .codex
 mkdir -p tmp/comfy-output
 
-log_success "Verzeichnisstruktur erstellt"
+log_success "Directory structure created"
 
 # =============================================================================
 # Python Virtual Environment
 # =============================================================================
 
-print_header "Python Virtual Environment einrichten"
+print_header "Setting up Python Virtual Environment"
 
-# Prüfe ob venv bereits existiert
+# Check if venv already exists
 if [ -d ".venv/bin" ]; then
-    log_warning "Virtual Environment existiert bereits"
-    read -p "Neu erstellen? (j/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Jj]$ ]]; then
-        log_info "Lösche altes Virtual Environment..."
-        rm -rf .venv
+    log_warning "Virtual Environment already exists"
+    
+    if [ "$NON_INTERACTIVE" = true ]; then
+        log_info "Using existing Virtual Environment (non-interactive mode)"
     else
-        log_info "Verwende existierendes Virtual Environment"
+        read -p "Recreate? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Removing old Virtual Environment..."
+            rm -rf .venv
+        else
+            log_info "Using existing Virtual Environment"
+        fi
     fi
 fi
 
 if [ ! -d ".venv/bin" ]; then
-    log_info "Erstelle Virtual Environment..."
+    log_info "Creating Virtual Environment..."
     python3 -m venv .venv
-    log_success "Virtual Environment erstellt"
+    log_success "Virtual Environment created"
 fi
 
-# Aktiviere venv
-log_info "Aktiviere Virtual Environment..."
+# Activate venv
+log_info "Activating Virtual Environment..."
 source .venv/bin/activate
-log_success "Virtual Environment aktiviert"
+log_success "Virtual Environment activated"
 
 # Upgrade pip
-log_info "Upgrade pip, setuptools, wheel..."
+log_info "Upgrading pip, setuptools, wheel..."
 pip install --upgrade pip setuptools wheel --quiet
-log_success "pip aktualisiert"
+log_success "pip updated"
 
 # =============================================================================
-# Python Dependencies installieren
+# Python Dependencies
 # =============================================================================
 
-print_header "Python Dependencies installieren"
+print_header "Installing Python Dependencies"
 
-log_info "Erstelle requirements-dev.txt..."
+log_info "Creating requirements-dev.txt..."
 cat > requirements-dev.txt << 'EOF'
-# Core Dependencies (wie im Dockerfile)
+# Core Dependencies (as in Dockerfile)
 requests>=2.31.0
 runpod>=1.6.0
-pathlib
 
 # Development Tools
 pytest>=7.4.0
@@ -190,69 +218,74 @@ faker>=19.3.0
 sphinx>=7.1.2
 sphinx-rtd-theme>=1.3.0
 
-# Jupyter (optional, für interaktive Entwicklung)
+# Jupyter (optional, for interactive development)
 jupyter>=1.0.0
 notebook>=7.0.0
 EOF
 
-log_success "requirements-dev.txt erstellt"
+log_success "requirements-dev.txt created"
 
-log_info "Installiere Dependencies..."
-log_warning "Dies kann einige Minuten dauern..."
+log_info "Installing dependencies..."
+log_warning "This may take several minutes..."
 
 pip install -r requirements-dev.txt --quiet
 
-log_success "Dependencies installiert"
+log_success "Dependencies installed"
 
 # =============================================================================
-# ComfyUI für lokale Tests (optional)
+# ComfyUI for local testing (optional)
 # =============================================================================
 
-print_header "ComfyUI Setup für lokale Tests"
+print_header "ComfyUI Setup for Local Testing"
 
-log_info "ComfyUI wird für lokale Tests benötigt"
-read -p "ComfyUI jetzt klonen? (J/n): " -n 1 -r
-echo
-
-if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    if [ -d "ComfyUI" ]; then
-        log_warning "ComfyUI Verzeichnis existiert bereits"
-    else
-        log_info "Clone ComfyUI Repository..."
-        git clone https://github.com/comfyanonymous/ComfyUI.git
-        
-        cd ComfyUI
-        log_info "Checkout Version v0.3.57 (wie im Dockerfile)..."
-        git checkout v0.3.57
-        
-        log_info "Installiere ComfyUI Dependencies..."
-        # Installiere nur die Python-Packages, keine Torch-Pakete neu
-        pip install -r requirements.txt --quiet || log_warning "Einige ComfyUI Dependencies konnten nicht installiert werden"
-        
-        cd "$WORKSPACE_ROOT"
-        log_success "ComfyUI eingerichtet"
-        
-        # Erstelle Model-Verzeichnisse
-        mkdir -p ComfyUI/models/checkpoints
-        mkdir -p ComfyUI/models/vae
-        mkdir -p ComfyUI/models/loras
-        mkdir -p ComfyUI/output
-        
-        log_info "Model-Verzeichnisse erstellt"
-        log_warning "Hinweis: Modelle müssen manuell heruntergeladen werden"
-        log_info "Beispiel: wget -P ComfyUI/models/checkpoints/ <model-url>"
-    fi
+if [ "$NON_INTERACTIVE" = true ]; then
+    log_info "Skipping ComfyUI setup in non-interactive mode"
+    log_info "Run setup again interactively to install ComfyUI"
 else
-    log_info "ComfyUI Setup übersprungen"
+    log_info "ComfyUI is needed for local testing"
+    read -p "Clone ComfyUI now? (Y/n): " -n 1 -r
+    echo
+
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        if [ -d "ComfyUI" ]; then
+            log_warning "ComfyUI directory already exists"
+        else
+            log_info "Cloning ComfyUI repository..."
+            git clone https://github.com/comfyanonymous/ComfyUI.git
+            
+            cd ComfyUI
+            log_info "Checking out version v0.3.57 (as in Dockerfile)..."
+            git checkout v0.3.57
+            
+            log_info "Installing ComfyUI dependencies..."
+            # Install only Python packages, no Torch packages reinstallation
+            pip install -r requirements.txt --quiet || log_warning "Some ComfyUI dependencies could not be installed"
+            
+            cd "$WORKSPACE_ROOT"
+            log_success "ComfyUI set up"
+            
+            # Create model directories
+            mkdir -p ComfyUI/models/checkpoints
+            mkdir -p ComfyUI/models/vae
+            mkdir -p ComfyUI/models/loras
+            mkdir -p ComfyUI/output
+            
+            log_info "Model directories created"
+            log_warning "Note: Models must be downloaded manually"
+            log_info "Example: wget -P ComfyUI/models/checkpoints/ <model-url>"
+        fi
+    else
+        log_info "ComfyUI setup skipped"
+    fi
 fi
 
 # =============================================================================
-# Test-Setup
+# Test Setup
 # =============================================================================
 
-print_header "Test-Setup konfigurieren"
+print_header "Configuring Test Setup"
 
-log_info "Erstelle Test-Struktur..."
+log_info "Creating test structure..."
 
 mkdir -p tests/unit
 mkdir -p tests/integration
@@ -278,11 +311,11 @@ markers =
     slow: Slow running tests
 EOF
 
-log_success "pytest.ini erstellt"
+log_success "pytest.ini created"
 
-# Beispiel Unit Test
+# Example Unit Test
 cat > tests/unit/test_handler.py << 'EOF'
-"""Unit Tests für rp_handler.py"""
+"""Unit tests for rp_handler.py"""
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import sys
@@ -295,30 +328,30 @@ import rp_handler
 
 
 class TestVolumeFunctions:
-    """Tests für Volume-Management Funktionen"""
+    """Tests for volume management functions"""
     
     def test_sanitize_job_id_valid(self):
-        """Test sanitize_job_id mit gültigem Input"""
+        """Test sanitize_job_id with valid input"""
         result = rp_handler._sanitize_job_id("test-job-123")
         assert result == "test-job-123"
     
     def test_sanitize_job_id_invalid_chars(self):
-        """Test sanitize_job_id mit ungültigen Zeichen"""
+        """Test sanitize_job_id with invalid characters"""
         result = rp_handler._sanitize_job_id("test/job@123!")
         assert result == "test_job_123"
     
     def test_sanitize_job_id_none(self):
-        """Test sanitize_job_id mit None"""
+        """Test sanitize_job_id with None"""
         result = rp_handler._sanitize_job_id(None)
         assert result is None
 
 
 class TestComfyFunctions:
-    """Tests für ComfyUI-Interaktion"""
+    """Tests for ComfyUI interaction"""
     
     @patch('rp_handler.requests.get')
     def test_is_comfy_running_success(self, mock_get):
-        """Test _is_comfy_running wenn ComfyUI läuft"""
+        """Test _is_comfy_running when ComfyUI is running"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_get.return_value = mock_response
@@ -328,7 +361,7 @@ class TestComfyFunctions:
     
     @patch('rp_handler.requests.get')
     def test_is_comfy_running_failure(self, mock_get):
-        """Test _is_comfy_running wenn ComfyUI nicht läuft"""
+        """Test _is_comfy_running when ComfyUI is not running"""
         mock_get.side_effect = Exception("Connection failed")
         
         result = rp_handler._is_comfy_running()
@@ -336,10 +369,10 @@ class TestComfyFunctions:
 
 
 class TestHandler:
-    """Tests für den Haupt-Handler"""
+    """Tests for main handler"""
     
     def test_handler_missing_workflow(self):
-        """Test handler ohne workflow Input"""
+        """Test handler without workflow input"""
         event = {"input": {}}
         
         with pytest.raises(ValueError, match="workflow fehlt"):
@@ -350,7 +383,7 @@ class TestHandler:
     @patch('rp_handler._run_workflow')
     @patch('rp_handler._wait_for_completion')
     def test_handler_basic_flow(self, mock_wait, mock_run, mock_volume, mock_start):
-        """Test grundlegender Handler-Flow"""
+        """Test basic handler flow"""
         # Setup mocks
         mock_volume.return_value = True
         mock_run.return_value = "test-prompt-id"
@@ -371,13 +404,13 @@ class TestHandler:
         assert result["job_id"] == "test-job-123"
 EOF
 
-log_success "Beispiel-Tests erstellt"
+log_success "Example tests created"
 
 # =============================================================================
 # Development Tools Config
 # =============================================================================
 
-print_header "Development Tools konfigurieren"
+print_header "Configuring Development Tools"
 
 # .flake8
 cat > .flake8 << 'EOF'
@@ -424,14 +457,14 @@ disallow_untyped_defs = false
 exclude = ['ComfyUI', '.venv']
 EOF
 
-log_success "Tool-Konfigurationen erstellt"
+log_success "Tool configurations created"
 
 # =============================================================================
 # Docker Helper Scripts
 # =============================================================================
 
 if [ "$DOCKER_AVAILABLE" = true ]; then
-    print_header "Docker Helper Scripts erstellen"
+    print_header "Creating Docker Helper Scripts"
     
     # build-docker.sh
     cat > build-docker.sh << 'EOF'
@@ -499,14 +532,14 @@ docker run -it --rm \
 EOF
     chmod +x test-docker-local.sh
     
-    log_success "Docker Scripts erstellt"
+    log_success "Docker scripts created"
 fi
 
 # =============================================================================
-# Codex Konfiguration
+# Codex Configuration
 # =============================================================================
 
-print_header "Codex-Konfiguration erstellen"
+print_header "Creating Codex Configuration"
 
 # .codex/config.json
 cat > .codex/config.json << 'EOF'
@@ -656,7 +689,7 @@ mypy rp_handler.py
 4. Mit test_endpoint.sh testen
 EOF
 
-log_success "Codex-Dokumentation erstellt"
+log_success "Codex documentation created"
 
 # =============================================================================
 # Environment File
@@ -688,18 +721,20 @@ EOF
 
 if [ ! -f ".env" ]; then
     cp .env.example .env
-    log_success ".env Datei erstellt (bitte anpassen!)"
+    log_success ".env file created (please customize!)"
 else
-    log_warning ".env existiert bereits"
+    log_warning ".env already exists"
 fi
 
 # =============================================================================
 # .gitignore Update
 # =============================================================================
 
-print_header ".gitignore aktualisieren"
+print_header "Updating .gitignore"
 
-cat >> .gitignore << 'EOF'
+# Check if gitignore entries already exist to prevent duplicates
+if ! grep -q "# Codex Development" .gitignore 2>/dev/null; then
+    cat >> .gitignore << 'EOF'
 
 # Codex Development
 .venv/
@@ -720,94 +755,96 @@ build/
 dist/
 *.egg-info/
 EOF
-
-log_success ".gitignore aktualisiert"
+    log_success ".gitignore updated"
+else
+    log_info ".gitignore already contains Codex Development entries"
+fi
 
 # =============================================================================
 # Quick Start Script
 # =============================================================================
 
-print_header "Quick-Start Script erstellen"
+print_header "Creating Quick-Start Script"
 
 cat > start-dev.sh << 'EOF'
 #!/bin/bash
-# Quick Start für Development
+# Quick Start for Development
 
 set -e
 
-# Aktiviere venv
+# Activate venv
 source .venv/bin/activate
 
-echo "✅ Virtual Environment aktiviert"
+echo "✅ Virtual Environment activated"
 echo ""
-echo "📋 Verfügbare Befehle:"
-echo "  pytest              - Tests ausführen"
-echo "  black rp_handler.py - Code formatieren"
-echo "  flake8 rp_handler.py - Code linten"
-echo "  ./build-docker.sh   - Docker Image bauen"
+echo "📋 Available commands:"
+echo "  pytest              - Run tests"
+echo "  black rp_handler.py - Format code"
+echo "  flake8 rp_handler.py - Lint code"
+echo "  ./build-docker.sh   - Build Docker image"
 echo ""
-echo "📚 Dokumentation: .codex/development.md"
+echo "📚 Documentation: .codex/development.md"
 echo ""
 
-# Shell öffnen
+# Open shell
 exec bash
 EOF
 chmod +x start-dev.sh
 
-log_success "start-dev.sh erstellt"
+log_success "start-dev.sh created"
 
 # =============================================================================
-# Tests ausführen
+# Verify Installation
 # =============================================================================
 
-print_header "Test-Installation verifizieren"
+print_header "Verifying Test Installation"
 
-log_info "Führe Tests aus..."
+log_info "Running tests..."
 if pytest tests/ -v; then
-    log_success "Alle Tests bestanden!"
+    log_success "All tests passed!"
 else
-    log_warning "Einige Tests sind fehlgeschlagen (expected für Mocks)"
+    log_warning "Some tests failed (expected for mocks)"
 fi
 
 # =============================================================================
-# Abschluss
+# Completion
 # =============================================================================
 
-print_header "Setup abgeschlossen!"
+print_header "Setup Complete!"
 
 echo ""
-log_success "🎉 Codex-Entwicklungsumgebung ist bereit!"
+log_success "🎉 Codex development environment is ready!"
 echo ""
-echo "📁 Erstellte Dateien:"
+echo "📁 Created files:"
 echo "   ├── .venv/                    Python Virtual Environment"
 echo "   ├── requirements-dev.txt      Development Dependencies"
 echo "   ├── pytest.ini                Test Configuration"
 echo "   ├── pyproject.toml            Tool Configuration"
 echo "   ├── .env.example              Environment Template"
 echo "   ├── tests/                    Test Suite"
-echo "   ├── .codex/                   Codex Konfiguration"
+echo "   ├── .codex/                   Codex Configuration"
 echo "   ├── build-docker.sh           Docker Build Script"
 echo "   ├── test-docker-local.sh      Docker Test Script"
 echo "   └── start-dev.sh              Quick Start Script"
 echo ""
-echo "🚀 Nächste Schritte:"
+echo "🚀 Next steps:"
 echo ""
-echo "1. Virtual Environment aktivieren:"
+echo "1. Activate Virtual Environment:"
 echo "   source .venv/bin/activate"
 echo ""
-echo "2. Oder Quick-Start verwenden:"
+echo "2. Or use Quick-Start:"
 echo "   ./start-dev.sh"
 echo ""
-echo "3. .env Datei anpassen:"
+echo "3. Customize .env file:"
 echo "   nano .env"
 echo ""
-echo "4. Tests ausführen:"
+echo "4. Run tests:"
 echo "   pytest"
 echo ""
-echo "5. Docker Image bauen (optional):"
+echo "5. Build Docker image (optional):"
 echo "   ./build-docker.sh"
 echo ""
-echo "📚 Weitere Infos: .codex/development.md"
+echo "📚 More info: .codex/development.md"
 echo ""
 log_success "Happy Coding! 🚀"
 echo ""

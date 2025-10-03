@@ -1,109 +1,109 @@
 # Codex Setup Guide
 
-## 🚀 Schnellstart
+## 🚀 Quick Start
 
-Dieses Setup-Skript richtet eine vollständige Entwicklungsumgebung für das RunPod ComfyUI Serverless Projekt ein.
+This setup script configures a complete development environment for the RunPod ComfyUI Serverless project.
 
 ### Installation
 
 ```bash
-# Setup ausführen
+# Run setup
 ./setup-codex.sh
 
-# Danach: Virtual Environment aktivieren
+# Then: Activate Virtual Environment
 source .venv/bin/activate
 ```
 
-**Oder mit Quick-Start:**
+**Or with Quick-Start:**
 
 ```bash
-# Alles in einem
+# All in one
 ./setup-codex.sh && ./start-dev.sh
 ```
 
-## 📦 Was wird eingerichtet?
+## 📦 What Gets Installed?
 
-Das Setup-Skript erstellt automatisch:
+The setup script automatically creates:
 
 ### 1. **Python Virtual Environment**
-- `.venv/` - Isolierte Python-Umgebung
-- Alle Development Dependencies installiert
-- Python 3.11+ kompatibel
+- `.venv/` - Isolated Python environment
+- All development dependencies installed
+- Python 3.11+ compatible
 
 ### 2. **Development Tools**
 - **pytest** - Test Framework
 - **black** - Code Formatter
 - **flake8** - Linter
 - **mypy** - Type Checker
-- **ipython** - Interaktive Shell
+- **ipython** - Interactive Shell
 - **jupyter** - Notebook Support
 
-### 3. **Test-Infrastruktur**
+### 3. **Test Infrastructure**
 - `tests/unit/` - Unit Tests
 - `tests/integration/` - Integration Tests
 - `pytest.ini` - Test Configuration
-- Beispiel-Tests für Handler
+- Example tests for handler
 
 ### 4. **Code Quality Tools**
 - `.flake8` - Linter Configuration
 - `pyproject.toml` - black, isort, mypy Config
-- Pre-configured für das Projekt
+- Pre-configured for the project
 
 ### 5. **Docker Development**
 - `build-docker.sh` - Build Docker Image
-- `test-docker-local.sh` - Test Image lokal
-- GPU-Support für lokale Tests
+- `test-docker-local.sh` - Test Image locally
+- GPU support for local tests
 
 ### 6. **Codex Configuration**
-- `.codex/config.json` - Projekt-Metadaten
+- `.codex/config.json` - Project metadata
 - `.codex/development.md` - Development Guide
-- Kommandos und Best Practices
+- Commands and best practices
 
 ### 7. **Optional: ComfyUI**
-- Lokales ComfyUI für Tests
-- Version v0.3.57 (wie im Docker Image)
-- Model-Verzeichnisse vorbereitet
+- Local ComfyUI for testing
+- Version v0.3.57 (as in Docker image)
+- Model directories prepared
 
-## 🛠️ Voraussetzungen
+## 🛠️ Requirements
 
-### Minimal
+### Minimum
 - **Python 3.11+**
 - **Git**
-- **10GB+ freier Speicher**
+- **10GB+ free disk space**
 
 ### Optional
-- **Docker** (für Image-Build und Tests)
-- **NVIDIA GPU** (für lokales ComfyUI Testing)
+- **Docker** (for image build and tests)
+- **NVIDIA GPU** (for local ComfyUI testing)
 
-## 📋 Verwendung
+## 📋 Usage
 
-### Development starten
+### Starting Development
 
 ```bash
-# Virtual Environment aktivieren
+# Activate Virtual Environment
 source .venv/bin/activate
 
-# Oder Quick-Start
+# Or Quick-Start
 ./start-dev.sh
 ```
 
-### Tests ausführen
+### Running Tests
 
 ```bash
-# Alle Tests
+# All tests
 pytest
 
-# Nur Unit Tests
+# Only Unit Tests
 pytest -m unit
 
-# Mit Coverage Report
+# With Coverage Report
 pytest --cov=. --cov-report=html
 ```
 
 ### Code Quality
 
 ```bash
-# Code formatieren
+# Format code
 black rp_handler.py
 
 # Linting
@@ -116,42 +116,42 @@ mypy rp_handler.py
 ### Docker Development
 
 ```bash
-# Image bauen
+# Build image
 ./build-docker.sh
 
-# Lokal testen (mit GPU)
+# Test locally (with GPU)
 ./test-docker-local.sh
 ```
 
-## 🔧 Konfiguration
+## 🔧 Configuration
 
 ### Environment Variables
 
-Kopiere `.env.example` zu `.env` und passe an:
+Copy `.env.example` to `.env` and customize:
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Wichtige Variablen:
-- `RUNPOD_API_KEY` - Dein RunPod API Key
-- `RUNPOD_ENDPOINT_ID` - Dein Endpoint
+Important variables:
+- `RUNPOD_API_KEY` - Your RunPod API Key
+- `RUNPOD_ENDPOINT_ID` - Your Endpoint
 - `COMFY_PORT` - ComfyUI Port (default: 8188)
 
-### ComfyUI Modelle
+### ComfyUI Models
 
-Wenn du ComfyUI lokal nutzen möchtest:
+If you want to use ComfyUI locally:
 
 ```bash
-# Beispiel: Stable Diffusion 1.5
+# Example: Stable Diffusion 1.5
 wget -P ComfyUI/models/checkpoints/ \
   "https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors"
 ```
 
-## 📚 Dokumentation
+## 📚 Documentation
 
-Nach dem Setup findest du:
+After setup you'll find:
 
 - **Development Guide**: `.codex/development.md`
 - **Test Examples**: `tests/unit/test_handler.py`
@@ -159,10 +159,10 @@ Nach dem Setup findest du:
 
 ## 🐛 Troubleshooting
 
-### Python Version zu alt
+### Python Version Too Old
 
 ```bash
-# Installiere Python 3.11+
+# Install Python 3.11+
 sudo apt-get update
 sudo apt-get install python3.11 python3.11-venv
 ```
@@ -170,84 +170,84 @@ sudo apt-get install python3.11 python3.11-venv
 ### Disk Space Issues
 
 ```bash
-# Prüfe Speicherplatz
+# Check disk space
 df -h
 
-# Cleanup Docker (falls vorhanden)
+# Cleanup Docker (if available)
 docker system prune -a
 ```
 
-### ComfyUI Installation fehlgeschlagen
+### ComfyUI Installation Failed
 
-Das ist optional - du kannst das Projekt auch ohne lokales ComfyUI entwickeln:
+This is optional - you can develop the project without local ComfyUI:
 
 ```bash
-# Setup erneut ausführen und ComfyUI-Installation überspringen
+# Run setup again and skip ComfyUI installation
 ./setup-codex.sh
 ```
 
-### Tests schlagen fehl
+### Tests Failing
 
-Das ist normal beim ersten Setup - einige Tests sind Mocks und benötigen angepasste Configuration:
+This is normal on first setup - some tests are mocks and need adjusted configuration:
 
 ```bash
-# Einzelnen Test ausführen
+# Run single test
 pytest tests/unit/test_handler.py::TestVolumeFunctions::test_sanitize_job_id_valid -v
 ```
 
 ## 🚢 Deployment Workflow
 
-1. **Lokal entwickeln**
+1. **Develop locally**
    ```bash
    source .venv/bin/activate
-   # Code ändern in rp_handler.py
-   pytest  # Tests ausführen
+   # Change code in rp_handler.py
+   pytest  # Run tests
    ```
 
-2. **Docker Image bauen**
+2. **Build Docker image**
    ```bash
    ./build-docker.sh
    ```
 
-3. **Image pushen**
+3. **Push image**
    ```bash
    docker push ecomtree/comfyui-serverless:latest
    ```
 
-4. **RunPod Endpoint updaten**
-   - Gehe zu RunPod Dashboard
-   - Update Endpoint mit neuem Image
+4. **Update RunPod Endpoint**
+   - Go to RunPod Dashboard
+   - Update Endpoint with new image
 
-5. **Testen**
+5. **Test**
    ```bash
    ./test_endpoint.sh
    ```
 
 ## 💡 Best Practices
 
-### 1. Virtual Environment immer aktivieren
+### 1. Always activate Virtual Environment
 
 ```bash
-# Am Anfang jeder Session
+# At the beginning of each session
 source .venv/bin/activate
 ```
 
-### 2. Code formatieren vor Commit
+### 2. Format code before commit
 
 ```bash
 black rp_handler.py
 flake8 rp_handler.py
 ```
 
-### 3. Tests schreiben
+### 3. Write tests
 
-Für jede neue Funktion einen Test in `tests/unit/` erstellen.
+Create a test in `tests/unit/` for every new function.
 
-### 4. Environment Variables nicht committen
+### 4. Don't commit Environment Variables
 
-`.env` ist in `.gitignore` - Secrets gehören NICHT ins Repository!
+`.env` is in `.gitignore` - Secrets do NOT belong in the repository!
 
-### 5. Docker Image testen vor Push
+### 5. Test Docker image before push
 
 ```bash
 ./test-docker-local.sh
@@ -255,27 +255,27 @@ Für jede neue Funktion einen Test in `tests/unit/` erstellen.
 
 ## 🤝 Contribution Workflow
 
-1. Feature Branch erstellen
-2. Code entwickeln + Tests schreiben
-3. `pytest` + `black` + `flake8` ausführen
-4. Docker Image bauen und testen
-5. Pull Request erstellen
+1. Create feature branch
+2. Develop code + write tests
+3. Run `pytest` + `black` + `flake8`
+4. Build and test Docker image
+5. Create Pull Request
 
 ## 📞 Support
 
-Bei Fragen oder Problemen:
+If you have questions or problems:
 
-1. Prüfe die Logs: `logs/`
-2. Lese die Dokumentation: `.codex/development.md`
-3. Teste mit `pytest -v`
+1. Check the logs: `logs/`
+2. Read the documentation: `.codex/development.md`
+3. Test with `pytest -v`
 
-## 🎉 Los geht's!
+## 🎉 Let's Go!
 
 ```bash
-# Setup ausführen
+# Run setup
 ./setup-codex.sh
 
-# Development starten
+# Start development
 ./start-dev.sh
 
 # Happy Coding! 🚀
@@ -283,5 +283,5 @@ Bei Fragen oder Problemen:
 
 ---
 
-**Erstellt für RunPod ComfyUI Serverless Handler**  
-*Entwicklungsumgebung für AI-Bildgenerierung auf Serverless GPU Infrastructure*
+**Created for RunPod ComfyUI Serverless Handler**  
+*Development environment for AI image generation on Serverless GPU Infrastructure*
