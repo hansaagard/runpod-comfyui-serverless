@@ -28,7 +28,8 @@ COMFYUI_HOST = "127.0.0.1"
 COMFYUI_PORT = 8188
 COMFYUI_BASE_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
 DEFAULT_WORKFLOW_DURATION_SECONDS = 60  # Default fallback for workflow start time
-SUPPORTED_IMAGE_EXTENSIONS = ["*.png", "*.jpg", "*.jpeg", "*.webp"]
+SUPPORTED_IMAGE_EXTENSIONS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"]
+SUPPORTED_VIDEO_EXTENSIONS = ["*.mp4", "*.webm", "*.mov", "*.avi"]
 URL_TRUNCATE_LENGTH = 100  # Maximum characters to display when logging URLs
 
 # Global variable to track the ComfyUI process
@@ -200,6 +201,36 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
         print(f"❌ S3 Upload Error: {error_msg}")
         print(f"📋 Traceback: {traceback.format_exc()}")
         return {"success": False, "url": None, "error": error_msg}
+
+
+def _cleanup_temp_files(file_paths: list[Path], keep_failures: bool = True) -> int:
+    """
+    Clean up temporary ComfyUI output files after successful upload.
+    
+    Args:
+        file_paths: List of file paths to clean up
+        keep_failures: If True, only delete if file was successfully processed
+        
+    Returns:
+        int: Number of files successfully deleted
+    """
+    if not _parse_bool_env("CLEANUP_TEMP_FILES", "true"):
+        print("📋 Cleanup disabled via CLEANUP_TEMP_FILES=false")
+        return 0
+    
+    deleted_count = 0
+    for file_path in file_paths:
+        try:
+            if file_path.exists():
+                file_path.unlink()
+                deleted_count += 1
+        except Exception as e:
+            print(f"⚠️ Could not delete temp file {file_path.name}: {e}")
+    
+    if deleted_count > 0:
+        print(f"🧹 Cleaned up {deleted_count} temporary file(s)")
+    
+    return deleted_count
 
 
 def _wait_for_path(path: Path, timeout: int = 20, poll_interval: float = 1.0) -> bool:
@@ -754,6 +785,7 @@ def handler(event):
         workflow_start_time = result.get("_workflow_start_time", time.time() - DEFAULT_WORKFLOW_DURATION_SECONDS)
         
         # Search all output nodes for images
+        expected_files = []  # Track what ComfyUI said it would output
         for node_id, node_output in outputs.items():
             if "images" in node_output:
                 for img_info in node_output["images"]:
@@ -766,11 +798,17 @@ def handler(event):
                         else:
                             full_path = COMFYUI_OUTPUT_PATH / filename
                         
+                        expected_files.append(full_path)
                         if full_path.exists():
                             image_paths.append(full_path)
-                            print(f"🖼️ Image found: {full_path}")
-                        else:
-                            print(f"⚠️ Image not found at expected path: {full_path}")
+                            print(f"🖼️ Found: {full_path.name}")
+        
+        # Log expected files that weren't found (debug info only, not an error)
+        if expected_files and not image_paths:
+            print(f"📋 ComfyUI reported {len(expected_files)} output file(s), but none found yet")
+        elif expected_files and len(image_paths) < len(expected_files):
+            missing_count = len(expected_files) - len(image_paths)
+            print(f"📋 Found {len(image_paths)}/{len(expected_files)} expected files ({missing_count} temp/preview files not saved)")
         
         # Fallback: Search output directory recursively for new images created after workflow start
         if not image_paths:
