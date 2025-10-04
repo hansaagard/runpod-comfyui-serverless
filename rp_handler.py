@@ -203,13 +203,12 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
         return {"success": False, "url": None, "error": error_msg}
 
 
-def _cleanup_temp_files(file_paths: list[Path], keep_failures: bool = True) -> int:
+def _cleanup_temp_files(file_paths: list[Path]) -> int:
     """
     Clean up temporary ComfyUI output files after successful upload.
     
     Args:
         file_paths: List of file paths to clean up
-        keep_failures: If True, only delete if file was successfully processed
         
     Returns:
         int: Number of files successfully deleted
