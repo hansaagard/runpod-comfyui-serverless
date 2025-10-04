@@ -177,7 +177,10 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
             )
         
         print(f"✅ S3 Upload successful: {s3_key}")
-        print(f"🔗 URL: {url[:URL_TRUNCATE_LENGTH]}...")
+        if len(url) > URL_TRUNCATE_LENGTH:
+            print(f"🔗 URL: {url[:URL_TRUNCATE_LENGTH]}...")
+        else:
+            print(f"🔗 URL: {url}")
         
         return {
             "success": True,
@@ -506,17 +509,23 @@ def _randomize_seeds(workflow: dict) -> dict:
     parameters with random values. This ensures that each workflow execution
     produces different results, even if the same workflow is sent multiple times.
     
+    Creates a deep copy to avoid modifying the original workflow object.
+    
     Args:
         workflow: ComfyUI workflow dictionary
         
     Returns:
-        dict: Modified workflow with randomized seeds
+        dict: Modified workflow with randomized seeds (deep copy)
     """
+    import copy
+    
     # Check if seed randomization is disabled via env var
     if not _parse_bool_env("RANDOMIZE_SEEDS", "true"):
         print("🎲 Seed randomization disabled via RANDOMIZE_SEEDS=false")
         return workflow
     
+    # Create deep copy to avoid in-place modification
+    workflow = copy.deepcopy(workflow)
     randomized_count = 0
     
     # Walk through all nodes in the workflow
@@ -525,14 +534,35 @@ def _randomize_seeds(workflow: dict) -> dict:
             inputs = node_data["inputs"]
             
             # Check if this node has a seed parameter
-            if "seed" in inputs and isinstance(inputs["seed"], (int, float)):
-                # Generate random seed (ComfyUI typically uses large integers)
-                old_seed = inputs["seed"]
-                new_seed = random.randint(0, 2**32 - 1)
-                inputs["seed"] = new_seed
-                randomized_count += 1
+            if "seed" in inputs:
+                seed_value = inputs["seed"]
                 
-                print(f"🎲 Node {node_id}: Randomized seed {old_seed} → {new_seed}")
+                # Handle different seed formats
+                if isinstance(seed_value, (int, float)):
+                    # Direct seed value
+                    old_seed = seed_value
+                    new_seed = random.randint(0, 2**31 - 1)
+                    inputs["seed"] = new_seed
+                    randomized_count += 1
+                    print(f"🎲 Node {node_id}: Randomized seed {old_seed} → {new_seed}")
+                    
+                elif isinstance(seed_value, list) and len(seed_value) > 0:
+                    # Array format: [seed_value, ...]
+                    if isinstance(seed_value[0], (int, float)):
+                        old_seed = seed_value[0]
+                        new_seed = random.randint(0, 2**31 - 1)
+                        seed_value[0] = new_seed
+                        randomized_count += 1
+                        print(f"🎲 Node {node_id}: Randomized seed array {old_seed} → {new_seed}")
+                        
+                elif isinstance(seed_value, dict):
+                    # Reference format: {"seed": value} or other nested structures
+                    if "seed" in seed_value and isinstance(seed_value["seed"], (int, float)):
+                        old_seed = seed_value["seed"]
+                        new_seed = random.randint(0, 2**31 - 1)
+                        seed_value["seed"] = new_seed
+                        randomized_count += 1
+                        print(f"🎲 Node {node_id}: Randomized nested seed {old_seed} → {new_seed}")
     
     if randomized_count > 0:
         print(f"✅ Randomized {randomized_count} seed(s) in workflow")
@@ -910,6 +940,7 @@ def handler(event):
         output_urls = []
         volume_paths = []
         failed_uploads = []
+        s3_success_count = 0
         
         for img_path in image_paths:
             # Always save to volume as backup
@@ -922,6 +953,7 @@ def handler(event):
                 s3_result = _upload_to_s3(img_path, job_id)
                 if s3_result["success"]:
                     output_urls.append(s3_result["url"])
+                    s3_success_count += 1
                 else:
                     # S3 upload failed, fallback to volume path if available
                     failed_uploads.append({
@@ -944,16 +976,20 @@ def handler(event):
             else:
                 return {"error": "Failed to save all images to volume"}
         
+        # Determine actual storage type based on what succeeded
+        # If S3 was configured but all uploads failed, storage_type should be "volume"
+        actual_storage_type = "s3" if (use_s3 and s3_success_count > 0) else "volume"
+        
         # Build response
         response = {
             "links": output_urls,
             "total_images": len(output_urls),
             "job_id": job_id,
-            "storage_type": "s3" if use_s3 else "volume",
+            "storage_type": actual_storage_type,
         }
         
-        # Add S3-specific info
-        if use_s3:
+        # Add S3-specific info only if S3 was actually used successfully
+        if use_s3 and s3_success_count > 0:
             config = _get_s3_config()
             response["s3_bucket"] = config["bucket"]
             response["local_paths"] = [str(p) for p in image_paths]
@@ -971,9 +1007,11 @@ def handler(event):
             print(f"⚠️ {len(failed_uploads)} image(s) failed to upload")
         
         print(f"✅ Handler successful! {len(output_urls)} images processed")
-        if use_s3:
+        if actual_storage_type == "s3":
+            config = _get_s3_config()
             print(f"☁️ Images uploaded to S3: {config['bucket']}")
-        else:
+        
+        if volume_paths:
             print(f"📦 Images saved to volume: {volume_paths}")
         
         return response
