@@ -32,6 +32,21 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git && \
     pip install --no-cache-dir librosa soundfile av moviepy
 
 # ------------------------------------------------------------
+# Install ComfyUI Custom Nodes
+# ------------------------------------------------------------
+# Install LoadImageFromHttpURL custom node
+RUN mkdir -p /workspace/ComfyUI/custom_nodes && \
+    cd /workspace/ComfyUI/custom_nodes && \
+    git clone https://github.com/jerrywap/ComfyUI_LoadImageFromHttpURL.git && \
+    cd ComfyUI_LoadImageFromHttpURL && \
+    if [ -f requirements.txt ]; then \
+        echo "Installing dependencies from requirements.txt..." && \
+        pip install --no-cache-dir -r requirements.txt; \
+    else \
+        echo "No requirements.txt found, skipping dependency installation"; \
+    fi
+
+# ------------------------------------------------------------
 # Volume Model Setup - Models come from S3 Network Volume
 # ------------------------------------------------------------
 # Create empty Model Directories for ComfyUI
