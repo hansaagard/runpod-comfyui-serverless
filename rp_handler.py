@@ -29,7 +29,6 @@ COMFYUI_PORT = 8188
 COMFYUI_BASE_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
 DEFAULT_WORKFLOW_DURATION_SECONDS = 60  # Default fallback for workflow start time
 SUPPORTED_IMAGE_EXTENSIONS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"]
-SUPPORTED_VIDEO_EXTENSIONS = ["*.mp4", "*.webm", "*.mov", "*.avi"]
 URL_TRUNCATE_LENGTH = 100  # Maximum characters to display when logging URLs
 
 # Global variable to track the ComfyUI process
