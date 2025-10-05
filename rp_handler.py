@@ -13,6 +13,7 @@ import datetime
 import traceback
 import mimetypes
 import random
+import copy
 from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
@@ -31,6 +32,7 @@ COMFYUI_BASE_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
 DEFAULT_WORKFLOW_DURATION_SECONDS = 60  # Default fallback for workflow start time
 SUPPORTED_IMAGE_EXTENSIONS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"]
 URL_TRUNCATE_LENGTH = 100  # Maximum characters to display when logging URLs
+MAX_SEED_VALUE = 2**31 - 1  # Maximum seed value for ComfyUI (signed 32-bit integer)
 
 # Global variable to track the ComfyUI process
 _comfyui_process = None
@@ -506,8 +508,8 @@ def _randomize_seeds(workflow: dict) -> dict:
     Randomize all seed values in the workflow.
     
     This function walks through all nodes in the workflow and replaces any 'seed'
-    parameters with random values. This ensures that each workflow execution
-    produces different results, even if the same workflow is sent multiple times.
+    parameters with random values (0 to 2^31-1). This ensures that each workflow 
+    execution produces different results, even if the same workflow is sent multiple times.
     
     Creates a deep copy to avoid modifying the original workflow object.
     
@@ -517,8 +519,6 @@ def _randomize_seeds(workflow: dict) -> dict:
     Returns:
         dict: Modified workflow with randomized seeds (deep copy)
     """
-    import copy
-    
     # Check if seed randomization is disabled via env var
     if not _parse_bool_env("RANDOMIZE_SEEDS", "true"):
         print("🎲 Seed randomization disabled via RANDOMIZE_SEEDS=false")
@@ -541,7 +541,7 @@ def _randomize_seeds(workflow: dict) -> dict:
                 if isinstance(seed_value, (int, float)):
                     # Direct seed value
                     old_seed = seed_value
-                    new_seed = random.randint(0, 2**31 - 1)
+                    new_seed = random.randint(0, MAX_SEED_VALUE)
                     inputs["seed"] = new_seed
                     randomized_count += 1
                     print(f"🎲 Node {node_id}: Randomized seed {old_seed} → {new_seed}")
@@ -550,7 +550,7 @@ def _randomize_seeds(workflow: dict) -> dict:
                     # Array format: [seed_value, ...]
                     if isinstance(seed_value[0], (int, float)):
                         old_seed = seed_value[0]
-                        new_seed = random.randint(0, 2**31 - 1)
+                        new_seed = random.randint(0, MAX_SEED_VALUE)
                         seed_value[0] = new_seed
                         randomized_count += 1
                         print(f"🎲 Node {node_id}: Randomized seed array {old_seed} → {new_seed}")
@@ -559,7 +559,7 @@ def _randomize_seeds(workflow: dict) -> dict:
                     # Reference format: {"seed": value} or other nested structures
                     if "seed" in seed_value and isinstance(seed_value["seed"], (int, float)):
                         old_seed = seed_value["seed"]
-                        new_seed = random.randint(0, 2**31 - 1)
+                        new_seed = random.randint(0, MAX_SEED_VALUE)
                         seed_value["seed"] = new_seed
                         randomized_count += 1
                         print(f"🎲 Node {node_id}: Randomized nested seed {old_seed} → {new_seed}")
