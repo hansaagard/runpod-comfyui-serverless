@@ -12,6 +12,8 @@ import shutil
 import datetime
 import traceback
 import mimetypes
+import random
+import copy
 from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
@@ -176,7 +178,10 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
             )
         
         print(f"✅ S3 Upload successful: {s3_key}")
-        print(f"🔗 URL: {url[:URL_TRUNCATE_LENGTH]}...")
+        if len(url) > URL_TRUNCATE_LENGTH:
+            print(f"🔗 URL: {url[:URL_TRUNCATE_LENGTH]}...")
+        else:
+            print(f"🔗 URL: {url}")
         
         return {
             "success": True,
@@ -497,6 +502,84 @@ def _extract_checkpoint_names(object_info: dict) -> list:
         return []
 
 
+def _randomize_seeds(workflow: dict) -> dict:
+    """
+    Randomize all seed values in the workflow.
+    
+    This function walks through all nodes in the workflow and replaces any 'seed'
+    parameters with random values (0 to 2^31-1). This ensures that each workflow 
+    execution produces different results, even if the same workflow is sent multiple times.
+    
+    Uses recursive traversal to handle arbitrarily nested seed values in complex
+    workflow structures. Creates a deep copy to avoid modifying the original workflow object.
+    
+    Args:
+        workflow: ComfyUI workflow dictionary
+        
+    Returns:
+        dict: Modified workflow with randomized seeds (deep copy)
+    """
+    # Check if seed randomization is disabled via env var
+    if not _parse_bool_env("RANDOMIZE_SEEDS", "true"):
+        print("🎲 Seed randomization disabled via RANDOMIZE_SEEDS=false")
+        return workflow
+    
+    # Create deep copy to avoid in-place modification (only when randomization is enabled)
+    workflow = copy.deepcopy(workflow)
+    randomized_count = 0
+    
+    def _generate_random_seed():
+        """
+        Generate a random seed value using getrandbits for better performance.
+        
+        Uses getrandbits(31) to generate values in the range 0 to 2,147,483,647 (2^31-1).
+        This range is safe for signed 32-bit integers used by ComfyUI nodes.
+        getrandbits is more efficient than randint for generating random integers.
+        """
+        return random.getrandbits(31)
+    
+    def _randomize_seeds_in_obj(obj, node_id=None, path=""):
+        """Recursively traverse and randomize all seed values in nested structures."""
+        nonlocal randomized_count
+        
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                current_path = f"{path}.{key}" if path else key
+                if key == "seed" and isinstance(value, (int, float)):
+                    # Found a seed parameter - randomize it
+                    old_seed = value
+                    new_seed = _generate_random_seed()
+                    obj[key] = new_seed
+                    randomized_count += 1
+                    
+                    if node_id is not None:
+                        print(f"🎲 Node {node_id}: Randomized seed at {current_path}: {old_seed} → {new_seed}")
+                    else:
+                        print(f"🎲 Randomized seed at {current_path}: {old_seed} → {new_seed}")
+                else:
+                    # Recursively process nested structures
+                    _randomize_seeds_in_obj(value, node_id=node_id, path=current_path)
+                    
+        elif isinstance(obj, list):
+            for idx, item in enumerate(obj):
+                current_path = f"{path}[{idx}]" if path else f"[{idx}]"
+                _randomize_seeds_in_obj(item, node_id=node_id, path=current_path)
+        # For primitives (int, float, str, etc.), do nothing
+    
+    # Walk through all nodes in the workflow
+    for node_id, node_data in workflow.items():
+        if isinstance(node_data, dict) and "inputs" in node_data:
+            inputs = node_data["inputs"]
+            _randomize_seeds_in_obj(inputs, node_id=node_id, path="inputs")
+    
+    if randomized_count > 0:
+        print(f"✅ Randomized {randomized_count} seed(s) in workflow")
+    else:
+        print("ℹ️ No seeds found in workflow to randomize")
+    
+    return workflow
+
+
 def _run_workflow(workflow):
     """Execute ComfyUI workflow."""
     client_id = str(uuid.uuid4())
@@ -772,6 +855,9 @@ def handler(event):
         if not workflow:
             return {"error": "No 'workflow' found in input"}
         
+        # Randomize seeds before execution (if enabled)
+        workflow = _randomize_seeds(workflow)
+        
         # Execute workflow
         result = _run_workflow(workflow)
         if not result:
@@ -862,6 +948,7 @@ def handler(event):
         output_urls = []
         volume_paths = []
         failed_uploads = []
+        s3_success_count = 0
         
         for img_path in image_paths:
             # Always save to volume as backup
@@ -874,6 +961,7 @@ def handler(event):
                 s3_result = _upload_to_s3(img_path, job_id)
                 if s3_result["success"]:
                     output_urls.append(s3_result["url"])
+                    s3_success_count += 1
                 else:
                     # S3 upload failed, fallback to volume path if available
                     failed_uploads.append({
@@ -896,16 +984,20 @@ def handler(event):
             else:
                 return {"error": "Failed to save all images to volume"}
         
+        # Determine actual storage type based on what succeeded
+        # If S3 was configured but all uploads failed, storage_type should be "volume"
+        actual_storage_type = "s3" if (use_s3 and s3_success_count > 0) else "volume"
+        
         # Build response
         response = {
             "links": output_urls,
             "total_images": len(output_urls),
             "job_id": job_id,
-            "storage_type": "s3" if use_s3 else "volume",
+            "storage_type": actual_storage_type,
         }
         
-        # Add S3-specific info
-        if use_s3:
+        # Add S3-specific info only if S3 was actually used successfully
+        if use_s3 and s3_success_count > 0:
             config = _get_s3_config()
             response["s3_bucket"] = config["bucket"]
             response["local_paths"] = [str(p) for p in image_paths]
@@ -923,9 +1015,11 @@ def handler(event):
             print(f"⚠️ {len(failed_uploads)} image(s) failed to upload")
         
         print(f"✅ Handler successful! {len(output_urls)} images processed")
-        if use_s3:
+        if actual_storage_type == "s3":
+            config = _get_s3_config()
             print(f"☁️ Images uploaded to S3: {config['bucket']}")
-        else:
+        
+        if volume_paths:
             print(f"📦 Images saved to volume: {volume_paths}")
         
         return response

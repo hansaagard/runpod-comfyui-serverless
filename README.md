@@ -9,6 +9,7 @@ A high-performance serverless handler for running ComfyUI image & video workflow
 - **Serverless GPU Computing**: Uses RunPod's Serverless Platform for scalable GPU computations
 - **ComfyUI Integration**: Seamless integration with ComfyUI for AI image & video generation
 - **Heavy Video Rendering**: Optimized for long-running video workflows (AnimateDiff, SVD, etc.)
+- **Automatic Seed Randomization**: Seeds are automatically randomized for each execution (configurable)
 - **S3 Storage**: Direct upload to Cloudflare R2, AWS S3, or Backblaze B2 with presigned URLs
 - **RunPod Network Volume Support**: Automatic backup of generated files to RunPod Network Volume
 - **Workflow Flexibility**: Supports both predefined and dynamic workflows
@@ -79,6 +80,9 @@ The handler supports the following environment variables:
 #### ComfyUI Configuration
 - `COMFY_PORT`: ComfyUI Port (default: 8188)
 - `COMFY_HOST`: ComfyUI Host (default: 127.0.0.1)
+- `RANDOMIZE_SEEDS`: Automatically randomize all seeds in workflows (default: true)
+  - Set to `false` if you want to preserve exact seeds from your workflow
+  - When enabled, all seed values are replaced with random values before execution
 
 #### Storage Configuration (S3 or Network Volume)
 
