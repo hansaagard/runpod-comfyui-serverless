@@ -30,7 +30,6 @@ COMFYUI_BASE_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
 DEFAULT_WORKFLOW_DURATION_SECONDS = 60  # Default fallback for workflow start time
 SUPPORTED_IMAGE_EXTENSIONS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"]
 SUPPORTED_VIDEO_EXTENSIONS = ["*.mp4", "*.webm", "*.mov", "*.avi"]
-# URL_TRUNCATE_LENGTH = 100  # Maximum characters to display when logging URLs - DISABLED
 
 # Global variable to track the ComfyUI process
 _comfyui_process = None
@@ -88,6 +87,44 @@ def _get_s3_client():
         client_kwargs["region_name"] = config["region"]
     
     return boto3.client("s3", **client_kwargs)
+
+
+def _sanitize_url_for_logging(url: str) -> str:
+    """
+    Sanitize URL for safe logging by removing sensitive query parameters.
+    
+    For presigned URLs, this strips the query string containing authentication tokens
+    (X-Amz-Signature, etc.) to prevent security leaks in logs.
+    
+    Args:
+        url: Full URL (public or presigned)
+        
+    Returns:
+        str: Sanitized URL safe for logging
+    """
+    try:
+        from urllib.parse import urlparse, urlunparse
+        
+        parsed = urlparse(url)
+        
+        # Check if this is a presigned URL (has query parameters with AWS signature)
+        if parsed.query and 'X-Amz-Signature' in parsed.query:
+            # Strip all query parameters for presigned URLs
+            sanitized = urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                '',  # params
+                '',  # query (removed for security)
+                ''   # fragment
+            ))
+            return f"{sanitized} [presigned - query params redacted for security]"
+        else:
+            # Public URL or CDN - safe to log in full
+            return url
+    except Exception:
+        # Fallback: return URL as-is if parsing fails
+        return url
 
 
 def _get_content_type(file_path: Path) -> str:
@@ -177,7 +214,9 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
             )
         
         print(f"✅ S3 Upload successful: {s3_key}")
-        print(f"🔗 URL: {url}")
+        # Sanitize URL for logging to avoid exposing presigned URL tokens
+        safe_url = _sanitize_url_for_logging(url)
+        print(f"🔗 URL: {safe_url}")
         
         return {
             "success": True,
