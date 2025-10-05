@@ -218,6 +218,7 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
         # Sanitize URL for logging to avoid exposing presigned URL tokens
         safe_url = _sanitize_url_for_logging(url)
         print(f"🔗 URL: {safe_url}")
+        print(f"🔗 Full URL (for debugging): {url}")
         
         return {
             "success": True,
