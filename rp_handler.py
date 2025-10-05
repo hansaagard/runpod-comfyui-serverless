@@ -30,7 +30,7 @@ COMFYUI_BASE_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
 DEFAULT_WORKFLOW_DURATION_SECONDS = 60  # Default fallback for workflow start time
 SUPPORTED_IMAGE_EXTENSIONS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"]
 SUPPORTED_VIDEO_EXTENSIONS = ["*.mp4", "*.webm", "*.mov", "*.avi"]
-URL_TRUNCATE_LENGTH = 100  # Maximum characters to display when logging URLs
+# URL_TRUNCATE_LENGTH = 100  # Maximum characters to display when logging URLs - DISABLED
 
 # Global variable to track the ComfyUI process
 _comfyui_process = None
@@ -177,7 +177,7 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
             )
         
         print(f"✅ S3 Upload successful: {s3_key}")
-        print(f"🔗 URL: {url[:URL_TRUNCATE_LENGTH]}...")
+        print(f"🔗 URL: {url}")
         
         return {
             "success": True,
