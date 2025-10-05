@@ -511,7 +511,8 @@ def _randomize_seeds(workflow: dict) -> dict:
     parameters with random values (0 to 2^31-1). This ensures that each workflow 
     execution produces different results, even if the same workflow is sent multiple times.
     
-    Creates a deep copy to avoid modifying the original workflow object.
+    Uses recursive traversal to handle arbitrarily nested seed values in complex
+    workflow structures. Creates a deep copy to avoid modifying the original workflow object.
     
     Args:
         workflow: ComfyUI workflow dictionary
@@ -524,45 +525,48 @@ def _randomize_seeds(workflow: dict) -> dict:
         print("🎲 Seed randomization disabled via RANDOMIZE_SEEDS=false")
         return workflow
     
-    # Create deep copy to avoid in-place modification
+    # Create deep copy to avoid in-place modification (only when randomization is enabled)
     workflow = copy.deepcopy(workflow)
     randomized_count = 0
+    
+    def _generate_random_seed():
+        """Generate a random seed value using getrandbits for better performance."""
+        # Use getrandbits(31) to get 0 to 2^31-1 (signed 32-bit integer range)
+        return random.getrandbits(31)
+    
+    def _randomize_seeds_in_obj(obj, node_id=None, path=""):
+        """Recursively traverse and randomize all seed values in nested structures."""
+        nonlocal randomized_count
+        
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                current_path = f"{path}.{key}" if path else key
+                if key == "seed" and isinstance(value, (int, float)):
+                    # Found a seed parameter - randomize it
+                    old_seed = value
+                    new_seed = _generate_random_seed()
+                    obj[key] = new_seed
+                    randomized_count += 1
+                    
+                    if node_id is not None:
+                        print(f"🎲 Node {node_id}: Randomized seed at {current_path}: {old_seed} → {new_seed}")
+                    else:
+                        print(f"🎲 Randomized seed at {current_path}: {old_seed} → {new_seed}")
+                else:
+                    # Recursively process nested structures
+                    _randomize_seeds_in_obj(value, node_id=node_id, path=current_path)
+                    
+        elif isinstance(obj, list):
+            for idx, item in enumerate(obj):
+                current_path = f"{path}[{idx}]" if path else f"[{idx}]"
+                _randomize_seeds_in_obj(item, node_id=node_id, path=current_path)
+        # For primitives (int, float, str, etc.), do nothing
     
     # Walk through all nodes in the workflow
     for node_id, node_data in workflow.items():
         if isinstance(node_data, dict) and "inputs" in node_data:
             inputs = node_data["inputs"]
-            
-            # Check if this node has a seed parameter
-            if "seed" in inputs:
-                seed_value = inputs["seed"]
-                
-                # Handle different seed formats
-                if isinstance(seed_value, (int, float)):
-                    # Direct seed value
-                    old_seed = seed_value
-                    new_seed = random.randint(0, MAX_SEED_VALUE)
-                    inputs["seed"] = new_seed
-                    randomized_count += 1
-                    print(f"🎲 Node {node_id}: Randomized seed {old_seed} → {new_seed}")
-                    
-                elif isinstance(seed_value, list) and len(seed_value) > 0:
-                    # Array format: [seed_value, ...]
-                    if isinstance(seed_value[0], (int, float)):
-                        old_seed = seed_value[0]
-                        new_seed = random.randint(0, MAX_SEED_VALUE)
-                        seed_value[0] = new_seed
-                        randomized_count += 1
-                        print(f"🎲 Node {node_id}: Randomized seed array {old_seed} → {new_seed}")
-                        
-                elif isinstance(seed_value, dict):
-                    # Reference format: {"seed": value} or other nested structures
-                    if "seed" in seed_value and isinstance(seed_value["seed"], (int, float)):
-                        old_seed = seed_value["seed"]
-                        new_seed = random.randint(0, MAX_SEED_VALUE)
-                        seed_value["seed"] = new_seed
-                        randomized_count += 1
-                        print(f"🎲 Node {node_id}: Randomized nested seed {old_seed} → {new_seed}")
+            _randomize_seeds_in_obj(inputs, node_id=node_id, path="inputs")
     
     if randomized_count > 0:
         print(f"✅ Randomized {randomized_count} seed(s) in workflow")
