@@ -32,7 +32,6 @@ COMFYUI_BASE_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
 DEFAULT_WORKFLOW_DURATION_SECONDS = 60  # Default fallback for workflow start time
 SUPPORTED_IMAGE_EXTENSIONS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"]
 URL_TRUNCATE_LENGTH = 100  # Maximum characters to display when logging URLs
-MAX_SEED_VALUE = 2**31 - 1  # Maximum seed value for ComfyUI (signed 32-bit integer)
 
 # Global variable to track the ComfyUI process
 _comfyui_process = None
@@ -530,8 +529,13 @@ def _randomize_seeds(workflow: dict) -> dict:
     randomized_count = 0
     
     def _generate_random_seed():
-        """Generate a random seed value using getrandbits for better performance."""
-        # Use getrandbits(31) to get 0 to 2^31-1 (signed 32-bit integer range)
+        """
+        Generate a random seed value using getrandbits for better performance.
+        
+        Uses getrandbits(31) to generate values in the range 0 to 2,147,483,647 (2^31-1).
+        This range is safe for signed 32-bit integers used by ComfyUI nodes.
+        getrandbits is more efficient than randint for generating random integers.
+        """
         return random.getrandbits(31)
     
     def _randomize_seeds_in_obj(obj, node_id=None, path=""):
