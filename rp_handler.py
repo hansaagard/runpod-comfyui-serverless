@@ -219,6 +219,11 @@ def _upload_to_s3(file_path: Path, job_id: str) -> dict:
         safe_url = _sanitize_url_for_logging(url)
         print(f"🔗 URL: {safe_url}")
         
+        # Only log full URL with auth tokens if explicitly enabled (security risk)
+        if _parse_bool_env("DEBUG_S3_URLS", "false"):
+            print(f"🔍 DEBUG: Full URL with auth tokens: {url}")
+            print("⚠️  WARNING: Full S3 URLs contain sensitive authentication tokens!")
+        
         return {
             "success": True,
             "url": url,
