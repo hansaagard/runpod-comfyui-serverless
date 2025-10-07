@@ -44,6 +44,10 @@ RETRY_ATTEMPTS=${RETRY_ATTEMPTS:-3}
 RETRY_DELAY=${RETRY_DELAY:-2}
 PYTHON_CMD=python3
 
+# Python packages to install and validate
+PYTHON_PACKAGES=("runpod" "requests" "boto3" "Pillow" "numpy")
+PYTHON_IMPORT_NAMES=("runpod" "requests" "boto3" "PIL" "numpy")
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_BASENAME="runpod-comfyui-serverless"
 if [[ "$(basename "$SCRIPT_DIR")" == "$REPO_BASENAME" ]]; then
@@ -91,6 +95,12 @@ check_python_version() {
     local minor=$(echo "$version" | cut -d. -f2)
 
     echo_info "Python Version: $version"
+
+    # Validate that major and minor are numeric
+    if ! [[ "$major" =~ ^[0-9]+$ ]] || ! [[ "$minor" =~ ^[0-9]+$ ]]; then
+        echo_warning "Could not parse version numbers from $version"
+        return 0
+    fi
 
     if [ "$major" -lt "$required_major" ] || ([ "$major" -eq "$required_major" ] && [ "$minor" -lt "$required_minor" ]); then
         echo_warning "Python $required_major.$required_minor+ recommended, found $version"
@@ -155,12 +165,11 @@ ensure_system_packages() {
 
 # Function to validate Python package installation
 validate_python_packages() {
-    local packages=("runpod" "requests" "boto3" "PIL" "numpy")
     local all_ok=true
     
     echo_info "Validating Python packages..."
     
-    for pkg in "${packages[@]}"; do
+    for pkg in "${PYTHON_IMPORT_NAMES[@]}"; do
         if $PYTHON_CMD -c "import $pkg" 2>/dev/null; then
             echo_success "✓ $pkg"
         else
@@ -233,16 +242,17 @@ if $PREEXISTING_REPO; then
     cd "$REPO_DIR"
 elif [ ! -d "$REPO_DIR" ]; then
     echo_info "📦 Cloning repository..."
-    if git clone https://github.com/EcomTree/runpod-comfyui-serverless.git "$REPO_DIR" >/tmp/git-clone.log 2>&1; then
-        rm -f /tmp/git-clone.log
+    GIT_CLONE_LOG="$(mktemp /tmp/git-clone.XXXXXX.log)"
+    if git clone https://github.com/EcomTree/runpod-comfyui-serverless.git "$REPO_DIR" >"$GIT_CLONE_LOG" 2>&1; then
+        rm -f "$GIT_CLONE_LOG"
         cd "$REPO_DIR"
         echo_success "Repository cloned"
     else
         echo_error "Git clone failed"
-        if [ -s /tmp/git-clone.log ]; then
-            echo_warning "Details:" && cat /tmp/git-clone.log
+        if [ -s "$GIT_CLONE_LOG" ]; then
+            echo_warning "Details:" && cat "$GIT_CLONE_LOG"
         fi
-        rm -f /tmp/git-clone.log
+        rm -f "$GIT_CLONE_LOG"
         exit 1
     fi
 elif [ -d "$REPO_DIR" ]; then
@@ -255,7 +265,10 @@ fi
 # ============================================================
 echo_info "🌿 Ensuring repository is on main branch..."
 
-if git fetch origin main --tags >/tmp/git-fetch.log 2>&1; then
+GIT_FETCH_LOG="$(mktemp /tmp/git-fetch.XXXXXX.log)"
+GIT_PULL_LOG="$(mktemp /tmp/git-pull.XXXXXX.log)"
+
+if git fetch origin main --tags >"$GIT_FETCH_LOG" 2>&1; then
     if git show-ref --verify --quiet refs/heads/main; then
         if ! git checkout main 2>/dev/null; then
             echo_warning "Local main branch broken – recreating from origin/main"
@@ -269,7 +282,7 @@ if git fetch origin main --tags >/tmp/git-fetch.log 2>&1; then
         echo_warning "Local changes present – skipping git pull"
         echo_info "Run 'git status' to see changes"
     else
-        if git pull --ff-only origin main >/tmp/git-pull.log 2>&1; then
+        if git pull --ff-only origin main >"$GIT_PULL_LOG" 2>&1; then
             echo_success "Branch main successfully updated"
         else
             echo_warning "Could not update main – please check manually"
@@ -278,7 +291,7 @@ if git fetch origin main --tags >/tmp/git-fetch.log 2>&1; then
 else
     echo_warning "Fetch from origin/main failed – working with existing copy"
 fi
-rm -f /tmp/git-fetch.log /tmp/git-pull.log
+rm -f "$GIT_FETCH_LOG" "$GIT_PULL_LOG"
 
 # ============================================================
 # 4. Python Environment Setup (with venv)
@@ -308,11 +321,7 @@ if [ -f "requirements.txt" ]; then
 else
     echo_warning "requirements.txt not found - installing default packages"
     retry "$PYTHON_CMD" -m pip install --quiet --no-cache-dir \
-        runpod \
-        requests \
-        boto3 \
-        Pillow \
-        numpy 2>&1 | \
+        "${PYTHON_PACKAGES[@]}" 2>&1 | \
         grep -v "^Requirement already satisfied\|^Using cached" || true
 fi
 
@@ -454,7 +463,16 @@ import traceback
 try:
     from rp_handler import handler
     print('✓ Handler importable')
-except Exception:
+except ImportError as e:
+    print(f"ImportError: {e}")
+    traceback.print_exc()
+    raise SystemExit(1)
+except SyntaxError as e:
+    print(f"SyntaxError: {e}")
+    traceback.print_exc()
+    raise SystemExit(1)
+except Exception as e:
+    print(f"Unexpected exception ({type(e).__name__}): {e}")
     traceback.print_exc()
     raise SystemExit(1)
 PY
@@ -481,12 +499,12 @@ echo ""
 echo_success "✨ Setup completed successfully!"
 echo ""
 echo_info "📋 Environment Summary:"
-echo "   ├─ Python: $($PYTHON_CMD --version 2>&1 | awk '{print $2}')"
-echo "   ├─ pip: $($PYTHON_CMD -m pip --version 2>/dev/null | awk '{print $2}' || echo 'N/A')"
+echo "   ├─ Python: $($PYTHON_CMD --version 2>&1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || echo 'N/A')"
+echo "   ├─ pip: $($PYTHON_CMD -m pip --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || echo 'N/A')"
 echo "   ├─ Node.js: $(node --version 2>/dev/null || echo 'not detected')"
 echo "   ├─ jq: $(jq --version 2>/dev/null || echo 'not available')"
-echo "   ├─ curl: $(curl --version 2>/dev/null | head -n1 | awk '{print $2}' || echo 'not available')"
-echo "   └─ git: $(git --version 2>/dev/null | awk '{print $3}' || echo 'not available')"
+echo "   ├─ curl: $(curl --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || echo 'not available')"
+echo "   └─ git: $(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || echo 'not available')"
 echo ""
 echo_info "📁 Paths:"
 echo "   ├─ Workspace: $(pwd)"
