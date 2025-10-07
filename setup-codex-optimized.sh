@@ -126,7 +126,7 @@ ensure_system_packages() {
     if command_exists sudo && sudo -n true 2>/dev/null; then
         echo_info "Installing packages via sudo apt-get: ${missing[*]}"
         if retry sudo apt-get update -qq; then
-            retry sudo apt-get install -y "${missing[@]}" >/dev/null
+            retry sudo apt-get install -y "${missing[@]}"
         else
             echo_warning "apt-get update failed – skipping install for (${missing[*]})"
             return 1
@@ -134,7 +134,7 @@ ensure_system_packages() {
     elif [ "$(id -u)" -eq 0 ]; then
         echo_info "Installing packages with root privileges: ${missing[*]}"
         if retry apt-get update -qq; then
-            retry apt-get install -y "${missing[@]}" >/dev/null
+            retry apt-get install -y "${missing[@]}"
         else
             echo_warning "apt-get update failed – skipping install for (${missing[*]})"
             return 1
@@ -161,11 +161,7 @@ validate_python_packages() {
     echo_info "Validating Python packages..."
     
     for pkg in "${packages[@]}"; do
-        # Special case for Pillow (imports as PIL)
-        local import_name=$pkg
-        [ "$pkg" = "PIL" ] && import_name="PIL"
-        
-        if $PYTHON_CMD -c "import $import_name" 2>/dev/null; then
+        if $PYTHON_CMD -c "import $pkg" 2>/dev/null; then
             echo_success "✓ $pkg"
         else
             echo_warning "✗ $pkg not found"
@@ -238,9 +234,6 @@ if $PREEXISTING_REPO; then
 elif [ ! -d "$REPO_DIR" ]; then
     echo_info "📦 Cloning repository..."
     if git clone https://github.com/EcomTree/runpod-comfyui-serverless.git "$REPO_DIR" >/tmp/git-clone.log 2>&1; then
-        if grep -v "Cloning into" /tmp/git-clone.log 2>/dev/null; then
-            :
-        fi
         rm -f /tmp/git-clone.log
         cd "$REPO_DIR"
         echo_success "Repository cloned"
@@ -263,9 +256,6 @@ fi
 echo_info "🌿 Ensuring repository is on main branch..."
 
 if git fetch origin main --tags >/tmp/git-fetch.log 2>&1; then
-    if grep -v -E "^From|^remote:|^Fetching" /tmp/git-fetch.log 2>/dev/null; then
-        :
-    fi
     if git show-ref --verify --quiet refs/heads/main; then
         if ! git checkout main 2>/dev/null; then
             echo_warning "Local main branch broken – recreating from origin/main"
@@ -280,9 +270,6 @@ if git fetch origin main --tags >/tmp/git-fetch.log 2>&1; then
         echo_info "Run 'git status' to see changes"
     else
         if git pull --ff-only origin main >/tmp/git-pull.log 2>&1; then
-            if grep -v -E "^From|^Already" /tmp/git-pull.log 2>/dev/null; then
-                :
-            fi
             echo_success "Branch main successfully updated"
         else
             echo_warning "Could not update main – please check manually"
