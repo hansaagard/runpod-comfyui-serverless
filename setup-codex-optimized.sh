@@ -311,18 +311,19 @@ PYTHON_CMD="$(command -v python)"
 echo_success "Virtual environment active: $PYTHON_CMD"
 
 echo_info "Upgrading pip, setuptools, wheel..."
-retry "$PYTHON_CMD" -m pip install --quiet --upgrade pip setuptools wheel 2>&1 | grep -v "^Requirement already satisfied" || true
+retry "$PYTHON_CMD" -m pip install --quiet --upgrade pip setuptools wheel 2>&1 \
+    | grep -v "^Requirement already satisfied" || true
 
 echo_info "📦 Installing Python dependencies..."
 if [ -f "requirements.txt" ]; then
     echo_info "Using requirements.txt"
-    retry "$PYTHON_CMD" -m pip install --quiet --no-cache-dir -r requirements.txt 2>&1 | \
-        grep -v "^Requirement already satisfied\|^Using cached" || true
+    retry "$PYTHON_CMD" -m pip install --quiet --no-cache-dir -r requirements.txt 2>&1 \
+        | grep -v "^Requirement already satisfied\|^Using cached" || true
 else
     echo_warning "requirements.txt not found - installing default packages"
     retry "$PYTHON_CMD" -m pip install --quiet --no-cache-dir \
-        "${PYTHON_PACKAGES[@]}" 2>&1 | \
-        grep -v "^Requirement already satisfied\|^Using cached" || true
+        "${PYTHON_PACKAGES[@]}" 2>&1 \
+        | grep -v "^Requirement already satisfied\|^Using cached" || true
 fi
 
 validate_python_packages || {
