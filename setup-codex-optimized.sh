@@ -463,11 +463,13 @@ else
 fi
 
 if $PYTHON_CMD - <<'PY'
+import traceback
 try:
     from rp_handler import handler
     print('✓ Handler importable')
-except Exception as exc:
-    raise SystemExit(str(exc))
+except Exception:
+    traceback.print_exc()
+    raise SystemExit(1)
 PY
 then
     echo_success "✓ rp_handler.py is valid"
