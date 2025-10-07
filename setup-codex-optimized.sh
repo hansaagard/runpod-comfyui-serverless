@@ -10,7 +10,7 @@
 set -Eeuo pipefail
 trap 'echo -e "${RED}❌ Error on line ${BASH_LINENO[0]}${NC}"' ERR
 
-# Farben für bessere Lesbarkeit
+# Colors for better readability
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
