@@ -125,12 +125,20 @@ ensure_system_packages() {
 
     if command_exists sudo && sudo -n true 2>/dev/null; then
         echo_info "Installing packages via sudo apt-get: ${missing[*]}"
-        retry sudo apt-get update -qq
-        retry sudo apt-get install -y "${missing[@]}" >/dev/null
+        if retry sudo apt-get update -qq; then
+            retry sudo apt-get install -y "${missing[@]}" >/dev/null
+        else
+            echo_warning "apt-get update failed – skipping install for (${missing[*]})"
+            return 1
+        fi
     elif [ "$(id -u)" -eq 0 ]; then
         echo_info "Installing packages with root privileges: ${missing[*]}"
-        retry apt-get update -qq
-        retry apt-get install -y "${missing[@]}" >/dev/null
+        if retry apt-get update -qq; then
+            retry apt-get install -y "${missing[@]}" >/dev/null
+        else
+            echo_warning "apt-get update failed – skipping install for (${missing[*]})"
+            return 1
+        fi
     else
         echo_warning "No sudo privileges – cannot install packages (${missing[*]})"
         return 1
