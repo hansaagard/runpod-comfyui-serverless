@@ -8,7 +8,7 @@
 #
 
 set -Eeuo pipefail
-trap 'echo -e "${RED}❌ Fehler in Zeile ${BASH_LINENO[0]}${NC}"' ERR
+trap 'echo -e "${RED}❌ Error on line ${BASH_LINENO[0]}${NC}"' ERR
 
 # Farben für bessere Lesbarkeit
 GREEN='\033[0;32m'
