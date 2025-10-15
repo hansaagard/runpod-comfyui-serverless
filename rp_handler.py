@@ -974,6 +974,12 @@ def handler(event):
         if not image_paths:
             return {"error": "No generated images found"}
         
+        def _encode_image_to_base64(file_path: Path) -> str:
+            """Encode image file to base64 string."""
+            import base64
+            with open(file_path, 'rb') as f:
+                return base64.b64encode(f.read()).decode('utf-8')
+        
         # Generate job_id for organizing uploads
         job_id = event.get("id", str(uuid.uuid4()))
         
@@ -990,6 +996,7 @@ def handler(event):
         volume_paths = []
         failed_uploads = []
         s3_success_count = 0
+        image_data_list = []
         
         for img_path in image_paths:
             # Always save to volume as backup
@@ -1013,12 +1020,21 @@ def handler(event):
                         output_urls.append(volume_result["path"])
                         print(f"⚠️ S3 upload failed for {img_path.name}, using volume path as fallback")
             else:
-                # No S3, use volume paths as URLs
-                if volume_result["success"]:
-                    output_urls.append(volume_result["path"])
+                # No S3 - encode as base64 instead!
+                try:
+                    base64_data = _encode_image_to_base64(img_path)
+                    image_data_list.append({
+                        "filename": img_path.name,
+                        "data": base64_data
+                    })
+                    # Also keep volume path as fallback reference
+                    if volume_result["success"]:
+                        output_urls.append(volume_result["path"])
+                except Exception as e:
+                    print(f"⚠️ Failed to encode {img_path.name}: {e}")
         
         # Check if we have any output
-        if not output_urls:
+        if not output_urls and not image_data_list:  # CHANGED: Also check image_data_list
             if use_s3:
                 error_details = "; ".join([f["error"] for f in failed_uploads])
                 return {"error": f"Failed to upload all images to S3 and no volume paths available: {error_details}"}
@@ -1031,17 +1047,21 @@ def handler(event):
         
         # Build response
         response = {
-            "links": output_urls,
-            "total_images": len(output_urls),
+            "total_images": len(image_data_list) if image_data_list else len(image_paths),  # CHANGED
             "job_id": job_id,
             "storage_type": actual_storage_type,
         }
         
-        # Add S3-specific info only if S3 was actually used successfully
+        # Add links or base64 data depending on storage type
         if use_s3 and s3_success_count > 0:
+            response["links"] = output_urls
             config = _get_s3_config()
             response["s3_bucket"] = config["bucket"]
             response["local_paths"] = [str(p) for p in image_paths]
+        else:
+            # Return base64-encoded images
+            response["images"] = image_data_list
+            response["links"] = output_urls  # Volume paths as reference
         
         # Add volume paths
         if volume_paths:
